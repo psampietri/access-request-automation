@@ -1,17 +1,20 @@
 import React from 'react';
 import { PROXY_ENDPOINT } from '../constants';
-import { TrashIcon, EditIcon, XIcon, SendIcon, EyeIcon } from './Icons';
+import { TrashIcon, EditIcon, XIcon, SendIcon, EyeIcon, LinkIcon } from './Icons';
 
 export const OnboardingView = ({ log, users, templates, onboardingTemplates, onboardingInstances, fetchOnboardingTemplates, fetchOnboardingInstances }) => {
     const [isTemplateModalOpen, setIsTemplateModalOpen] = React.useState(false);
     const [isInstanceModalOpen, setIsInstanceModalOpen] = React.useState(false);
     const [isInstanceDetailModalOpen, setIsInstanceDetailModalOpen] = React.useState(false);
+    const [isAssociateModalOpen, setIsAssociateModalOpen] = React.useState(false);
     const [editingTemplate, setEditingTemplate] = React.useState(null);
     const [templateName, setTemplateName] = React.useState('');
     const [selectedTemplateIds, setSelectedTemplateIds] = React.useState(new Set());
     const [selectedUser, setSelectedUser] = React.useState('');
     const [selectedOnboardingTemplate, setSelectedOnboardingTemplate] = React.useState('');
     const [selectedInstance, setSelectedInstance] = React.useState(null);
+    const [associationInfo, setAssociationInfo] = React.useState({ instanceId: null, templateId: null });
+    const [issueKey, setIssueKey] = React.useState('');
 
     const handleSaveTemplate = async (e) => {
         e.preventDefault();
@@ -38,6 +41,7 @@ export const OnboardingView = ({ log, users, templates, onboardingTemplates, onb
             if (!res.ok) throw new Error(data.error);
             log('success', `Onboarding template '${templateName}' saved.`);
             fetchOnboardingTemplates();
+            fetchOnboardingInstances();
             setIsTemplateModalOpen(false);
         } catch (error) {
             log('error', `Failed to save onboarding template: ${error.message}`);
@@ -97,6 +101,27 @@ export const OnboardingView = ({ log, users, templates, onboardingTemplates, onb
         }
     };
 
+    const handleAssociateRequest = async (e) => {
+        e.preventDefault();
+        const { instanceId, templateId } = associationInfo;
+        log('info', `Associating ticket ${issueKey}...`);
+        try {
+            const res = await fetch(`${PROXY_ENDPOINT}/onboarding/instances/${instanceId}/associate/${templateId}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ issue_key: issueKey })
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error);
+            log('success', `Ticket ${data.issueKey} associated.`);
+            fetchOnboardingInstances();
+            setIsAssociateModalOpen(false);
+            setIssueKey('');
+        } catch (error) {
+            log('error', `Failed to associate ticket: ${error.message}`);
+        }
+    };
+
     const handleDeleteInstance = async (instanceId) => {
         if (confirm('Are you sure you want to delete this onboarding instance?')) {
             try {
@@ -125,6 +150,11 @@ export const OnboardingView = ({ log, users, templates, onboardingTemplates, onb
         setIsInstanceDetailModalOpen(true);
     };
 
+    const openAssociateModal = (instanceId, templateId) => {
+        setAssociationInfo({ instanceId, templateId });
+        setIsAssociateModalOpen(true);
+    };
+
     return (
         <>
             <div className="bg-slate-800/50 p-6 rounded-lg border border-slate-700">
@@ -145,9 +175,7 @@ export const OnboardingView = ({ log, users, templates, onboardingTemplates, onb
                             </tr>
                         </thead>
                         <tbody>
-                            {onboardingInstances.map(inst => {
-                                const isDeletable = inst.statuses.every(s => s.status === 'Not Started');
-                                return (
+                            {onboardingInstances.map(inst => (
                                 <tr key={inst.id} className="bg-slate-800 border-b border-slate-700">
                                     <td className="p-3">{inst.user_email}</td>
                                     <td className="p-3">{inst.onboarding_template_name}</td>
@@ -158,14 +186,12 @@ export const OnboardingView = ({ log, users, templates, onboardingTemplates, onb
                                         <button onClick={() => openInstanceDetailModal(inst)} className="text-blue-400 hover:text-blue-300">
                                             <EyeIcon c="w-4 h-4" />
                                         </button>
-                                        {isDeletable && (
-                                            <button onClick={() => handleDeleteInstance(inst.id)} className="text-red-400 hover:text-red-300">
-                                                <TrashIcon c="w-4 h-4" />
-                                            </button>
-                                        )}
+                                        <button onClick={() => handleDeleteInstance(inst.id)} className="text-red-400 hover:text-red-300">
+                                            <TrashIcon c="w-4 h-4" />
+                                        </button>
                                     </td>
                                 </tr>
-                            )})}
+                            ))}
                         </tbody>
                     </table>
                 </div>
@@ -295,9 +321,14 @@ export const OnboardingView = ({ log, users, templates, onboardingTemplates, onb
                                                 <td className="p-3">{s.issue_key}</td>
                                                 <td className="p-3">
                                                     {s.status === 'Not Started' && (
-                                                        <button onClick={() => handleExecuteRequest(selectedInstance.id, s.template_id)} className="text-blue-400 hover:text-blue-300">
-                                                            <SendIcon c="w-4 h-4" />
-                                                        </button>
+                                                        <div className="flex space-x-2">
+                                                            <button onClick={() => handleExecuteRequest(selectedInstance.id, s.template_id)} className="text-blue-400 hover:text-blue-300" title="Submit Request">
+                                                                <SendIcon c="w-4 h-4" />
+                                                            </button>
+                                                            <button onClick={() => openAssociateModal(selectedInstance.id, s.template_id)} className="text-gray-400 hover:text-gray-300" title="Associate Ticket">
+                                                                <LinkIcon c="w-4 h-4" />
+                                                            </button>
+                                                        </div>
                                                     )}
                                                 </td>
                                             </tr>
@@ -306,6 +337,28 @@ export const OnboardingView = ({ log, users, templates, onboardingTemplates, onb
                                 </table>
                             </div>
                         </div>
+                    </div>
+                </div>
+            )}
+
+            {isAssociateModalOpen && (
+                <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
+                    <div className="bg-slate-800 rounded-lg shadow-xl w-full max-w-md">
+                        <header className="flex justify-between items-center p-4 border-b border-slate-700">
+                            <h2 className="text-xl font-bold">Associate Existing Ticket</h2>
+                            <button onClick={() => setIsAssociateModalOpen(false)}><XIcon c="w-6 h-6" /></button>
+                        </header>
+                        <form onSubmit={handleAssociateRequest} className="p-4 space-y-4">
+                            <input
+                                type="text"
+                                placeholder="Enter Issue Key (e.g., PROJ-123)"
+                                value={issueKey}
+                                onChange={e => setIssueKey(e.target.value)}
+                                className="w-full bg-slate-700 p-2 text-sm rounded"
+                                required
+                            />
+                            <button type="submit" className="w-full p-2 bg-purple-600 rounded-lg">Associate Ticket</button>
+                        </form>
                     </div>
                 </div>
             )}
