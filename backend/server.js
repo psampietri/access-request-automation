@@ -121,6 +121,20 @@ app.post('/templates', async (req, res) => {
     }
 });
 
+app.delete('/templates/:template_id', async (req, res) => {
+    const { template_id } = req.params;
+    try {
+        const usage = await db.get('SELECT * FROM onboarding_template_access_templates WHERE template_id = ?', [template_id]);
+        if (usage) {
+            return res.status(400).json({ error: 'Cannot delete a template that is in use by an onboarding template.' });
+        }
+        await db.run('DELETE FROM templates WHERE template_id = ?', [template_id]);
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ error: 'Failed to delete template', details: e.message });
+    }
+});
+
 app.get('/analytics/time_spent', async (req, res) => {
     try {
         const analyticsData = await db.all(`
@@ -289,10 +303,19 @@ app.put('/onboarding/templates/:id', async (req, res) => {
 app.delete('/onboarding/templates/:id', async (req, res) => {
     const { id } = req.params;
     try {
+        const instances = await db.all('SELECT id FROM onboarding_instances WHERE onboarding_template_id = ?', [id]);
+        if (instances.length > 0) {
+            return res.status(400).json({ error: 'Cannot delete a template that is currently assigned to one or more onboarding instances.' });
+        }
+
+        await db.run('BEGIN TRANSACTION');
         await db.run('DELETE FROM onboarding_template_access_templates WHERE onboarding_template_id = ?', [id]);
         await db.run('DELETE FROM onboarding_templates WHERE id = ?', [id]);
+        await db.run('COMMIT');
+
         res.json({ success: true });
     } catch (e) {
+        if (db.inTransaction) await db.run('ROLLBACK');
         res.status(500).json({ error: 'Failed to delete onboarding template', details: e.message });
     }
 });
