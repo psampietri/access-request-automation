@@ -149,6 +149,26 @@ app.get('/requests', async (req, res) => {
     res.json({ requests: history, jira_base_url: JIRA_BASE_URL });
 });
 
+app.put('/requests/:issue_key/assign', async (req, res) => {
+    const { issue_key } = req.params;
+    const { user_email } = req.body;
+    if (!user_email) {
+        return res.status(400).json({ error: "User email is required." });
+    }
+    try {
+        const result = await db.run(
+            'UPDATE requests SET user_email = ? WHERE issue_key = ?',
+            [user_email, issue_key]
+        );
+        if (result.changes === 0) {
+            return res.status(404).json({ error: "Issue key not found." });
+        }
+        res.json({ success: true, issue_key, assigned_to: user_email });
+    } catch (e) {
+        res.status(500).json({ error: "Failed to assign user", details: e.message });
+    }
+});
+
 app.get('/analytics/time_spent', async (req, res) => {
     try {
         const rows = await db.all("SELECT request_type_name, opened_at, closed_at FROM requests WHERE closed_at IS NOT NULL");
@@ -183,6 +203,7 @@ app.get('/history', (req, res) => {
         res.json(rows);
     });
 });
+
 const startServer = async () => {
     try {
         const configPath = path.join(__dirname, 'config.json');

@@ -49,7 +49,7 @@ export default function App() {
                     {activeView === 'execute' && <ExecuteTemplateView log={log} users={users} templates={templates} />}
                     {activeView === 'templates' && <TemplatesView log={log} templates={templates} fetchTemplates={fetchTemplates} userFields={userFields} />}
                     {activeView === 'users' && <UserManagementView log={log} users={users} userFields={userFields} fetchUsers={fetchUsers} fetchUserFields={fetchUserFields} />}
-                    {activeView === 'history' && <HistoryView log={log} history={history} jiraBaseUrl={jiraBaseUrl} fetchHistory={fetchHistory} />}
+                    {activeView === 'history' && <HistoryView log={log} history={history} jiraBaseUrl={jiraBaseUrl} fetchHistory={fetchHistory} users={users} />}
                     {activeView === 'analytics' && <AnalyticsView log={log} />}
                 </div>
 
