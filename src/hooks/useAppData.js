@@ -1,11 +1,13 @@
 import React from 'react';
 import { PROXY_ENDPOINT } from '../constants';
-import { safeFetch } from '../utils/fetch'; // Import the new function
+import { safeFetch } from '../utils/fetch';
 
 export const useAppData = (log) => {
     const [users, setUsers] = React.useState([]);
     const [userFields, setUserFields] = React.useState([]);
     const [templates, setTemplates] = React.useState([]);
+    const [history, setHistory] = React.useState([]);
+    const [jiraBaseUrl, setJiraBaseUrl] = React.useState('');
 
     const fetchUsers = React.useCallback(async () => {
         const data = await safeFetch(`${PROXY_ENDPOINT}/users`, log, 'Could not load users');
@@ -22,20 +24,25 @@ export const useAppData = (log) => {
         if (data) setTemplates(data);
     }, [log]);
 
-    const syncWithJira = React.useCallback(async () => {
-        log('info', 'Syncing with Jira...');
-        // The original file had a `safeFetch` here that was not being used, so I've left it out.
-        // If you need to fetch data here, you can use the new `safeFetch` function.
+    const fetchHistory = React.useCallback(async () => {
+        log('info', 'Syncing request history...');
+        const data = await safeFetch(`${PROXY_ENDPOINT}/requests`, log, 'Could not fetch history');
+        if (data) {
+            setHistory(data.requests);
+            setJiraBaseUrl(data.jira_base_url);
+            log('success', 'History synced.');
+        }
     }, [log]);
 
     React.useEffect(() => {
         fetchUsers();
         fetchTemplates();
         fetchUserFields();
+        fetchHistory();
 
-        const intervalId = setInterval(syncWithJira, 3600000);
+        const intervalId = setInterval(fetchHistory, 3600000); // Sync every hour
         return () => clearInterval(intervalId);
-    }, [fetchUsers, fetchTemplates, fetchUserFields, syncWithJira]);
+    }, [fetchUsers, fetchTemplates, fetchUserFields, fetchHistory]);
 
-    return { users, userFields, templates, fetchUsers, fetchUserFields, fetchTemplates, syncWithJira };
+    return { users, userFields, templates, history, jiraBaseUrl, fetchUsers, fetchUserFields, fetchTemplates, fetchHistory };
 };

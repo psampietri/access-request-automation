@@ -16,7 +16,7 @@ export default function App() {
         setLogs(prev => [{ type, message, id: Date.now() + Math.random() }, ...prev.slice(0, 100)]);
     }, []);
 
-    const { users, userFields, templates, fetchUsers, fetchUserFields, fetchTemplates } = useAppData(log);
+    const { users, userFields, templates, history, jiraBaseUrl, fetchUsers, fetchUserFields, fetchTemplates, fetchHistory } = useAppData(log);
 
     const TabButton = ({ viewName, icon, children }) => (
         <button 
@@ -49,7 +49,7 @@ export default function App() {
                     {activeView === 'execute' && <ExecuteTemplateView log={log} users={users} templates={templates} />}
                     {activeView === 'templates' && <TemplatesView log={log} templates={templates} fetchTemplates={fetchTemplates} userFields={userFields} />}
                     {activeView === 'users' && <UserManagementView log={log} users={users} userFields={userFields} fetchUsers={fetchUsers} fetchUserFields={fetchUserFields} />}
-                    {activeView === 'history' && <HistoryView log={log} />}
+                    {activeView === 'history' && <HistoryView log={log} history={history} jiraBaseUrl={jiraBaseUrl} fetchHistory={fetchHistory} />}
                     {activeView === 'analytics' && <AnalyticsView log={log} />}
                 </div>
 

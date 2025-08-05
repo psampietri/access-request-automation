@@ -2,34 +2,17 @@ import React from 'react';
 import { PROXY_ENDPOINT } from '../constants';
 import { TrashIcon, ChevronUpIcon, ChevronDownIcon } from './Icons';
 
-export const HistoryView = ({ log }) => {
-    const [requests, setRequests] = React.useState([]);
-    const [jiraBaseUrl, setJiraBaseUrl] = React.useState('');
-    const [isLoading, setIsLoading] = React.useState(true);
+export const HistoryView = ({ log, history, jiraBaseUrl, fetchHistory }) => {
+    const [isLoading, setIsLoading] = React.useState(false);
     const [filters, setFilters] = React.useState({ status: '', user: '' });
     const [sortConfig, setSortConfig] = React.useState({ key: 'opened_at', direction: 'descending' });
     const [manualIssueKeys, setManualIssueKeys] = React.useState('');
 
-    const fetchHistory = React.useCallback(async () => {
+    const handleManualSync = async () => {
         setIsLoading(true);
-        log('info', 'Syncing request history...');
-        try {
-            const response = await fetch(`${PROXY_ENDPOINT}/requests`);
-            const data = await response.json();
-            if (!response.ok) throw new Error(data.error || 'Failed to fetch history');
-            setRequests(data.requests);
-            setJiraBaseUrl(data.jira_base_url);
-            log('success', `History synced.`);
-        } catch (error) {
-            log('error', `Could not fetch history: ${error.message}`);
-        } finally {
-            setIsLoading(false);
-        }
-    }, [log]);
-
-    React.useEffect(() => {
-        fetchHistory();
-    }, [fetchHistory]);
+        await fetchHistory();
+        setIsLoading(false);
+    };
 
     const handleAddManualIssue = async (e) => {
         e.preventDefault();
@@ -59,7 +42,7 @@ export const HistoryView = ({ log }) => {
                 const data = await res.json();
                 if (!res.ok) throw new Error(data.error);
                 log('info', `Stopped tracking ${issueKey}.`);
-                setRequests(current => current.filter(r => r.issue_key !== issueKey));
+                fetchHistory(); // Refetch history after deletion
             } catch (e) {
                 log('error', `Failed to delete: ${e.message}`);
             }
@@ -67,7 +50,7 @@ export const HistoryView = ({ log }) => {
     };
 
     const sortedAndFilteredRequests = React.useMemo(() =>
-        requests
+        history
             .filter(req =>
                 (filters.status ? req.status === filters.status : true) &&
                 (filters.user ? req.user_email.toLowerCase().includes(filters.user.toLowerCase()) : true)
@@ -79,7 +62,7 @@ export const HistoryView = ({ log }) => {
                 if (a[sortConfig.key] > b[sortConfig.key]) return sortConfig.direction === 'ascending' ? 1 : -1;
                 return 0;
             }),
-        [requests, filters, sortConfig]
+        [history, filters, sortConfig]
     );
 
     const requestSort = (key) => {
@@ -112,7 +95,7 @@ export const HistoryView = ({ log }) => {
                         />
                         <button type="submit" className="px-3 py-2 text-sm font-semibold text-white bg-purple-600 rounded-lg hover:bg-purple-700 self-start">Track Issues</button>
                     </form>
-                    <button onClick={fetchHistory} disabled={isLoading} className="flex items-center px-3 py-2 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:bg-slate-600 self-start">
+                    <button onClick={handleManualSync} disabled={isLoading} className="flex items-center px-3 py-2 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:bg-slate-600 self-start">
                         {isLoading ? 'Syncing...' : 'Sync with Jira'}
                     </button>
                 </div>
@@ -121,7 +104,7 @@ export const HistoryView = ({ log }) => {
                 <input type="text" placeholder="Filter by User Email..." value={filters.user} onChange={e => setFilters({ ...filters, user: e.target.value })} className="bg-slate-700 border border-slate-600 rounded-md p-2 text-sm" />
                 <select value={filters.status} onChange={e => setFilters({ ...filters, status: e.target.value })} className="bg-slate-700 border border-slate-600 rounded-md p-2 text-sm">
                     <option value="">All Statuses</option>
-                    {[...new Set(requests.map(r => r.status))].sort().map(s => <option key={s} value={s}>{s}</option>)}
+                    {[...new Set(history.map(r => r.status))].sort().map(s => <option key={s} value={s}>{s}</option>)}
                 </select>
             </div>
             <div className="max-h-[32rem] overflow-y-auto border border-slate-700 rounded-md">
