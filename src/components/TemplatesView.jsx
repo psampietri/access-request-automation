@@ -1,6 +1,7 @@
 import React from 'react';
 import { PROXY_ENDPOINT } from '../constants';
 import { TrashIcon, EditIcon } from './Icons';
+import { safeFetch } from '../utils/fetch'; // Import the new function
 
 export const TemplatesView = ({ log, templates, fetchTemplates, userFields }) => {
     const [editingTemplate, setEditingTemplate] = React.useState(null);
@@ -12,25 +13,13 @@ export const TemplatesView = ({ log, templates, fetchTemplates, userFields }) =>
     const [templateName, setTemplateName] = React.useState('');
     const [fieldMappings, setFieldMappings] = React.useState({});
 
-    const safeFetch = React.useCallback(async (url, errMsg) => {
-        try {
-            const response = await fetch(url);
-            const data = await response.json();
-            if (!response.ok) throw new Error(data.error || `Server responded with ${response.status}`);
-            return data;
-        } catch (error) {
-            log('error', `${errMsg}: ${error.message}`);
-            return null;
-        }
-    }, [log]);
-
     React.useEffect(() => {
         const fetch = async () => {
-            const data = await safeFetch(`${PROXY_ENDPOINT}/jira/servicedesks`, 'Failed to fetch Service Desks');
+            const data = await safeFetch(`${PROXY_ENDPOINT}/jira/servicedesks`, log, 'Failed to fetch Service Desks');
             if (data) setServiceDesks(data.values);
         };
         fetch();
-    }, [safeFetch]);
+    }, [log]);
 
     React.useEffect(() => {
         if (selectedServiceDesk.id) {
@@ -38,17 +27,17 @@ export const TemplatesView = ({ log, templates, fetchTemplates, userFields }) =>
                 setRequestTypes([]);
                 setSelectedRequestType({ id: '', name: '' });
                 setFields([]);
-                const data = await safeFetch(`${PROXY_ENDPOINT}/jira/servicedesks/${selectedServiceDesk.id}/requesttypes`, 'Failed to fetch Request Types');
+                const data = await safeFetch(`${PROXY_ENDPOINT}/jira/servicedesks/${selectedServiceDesk.id}/requesttypes`, log, 'Failed to fetch Request Types');
                 if (data) setRequestTypes(data.values);
             };
             fetch();
         }
-    }, [selectedServiceDesk.id, safeFetch]);
+    }, [selectedServiceDesk.id, log]);
 
     React.useEffect(() => {
         if (selectedRequestType.id) {
             const fetch = async () => {
-                const data = await safeFetch(`${PROXY_ENDPOINT}/jira/servicedesks/${selectedServiceDesk.id}/requesttypes/${selectedRequestType.id}/fields`, 'Failed to fetch fields');
+                const data = await safeFetch(`${PROXY_ENDPOINT}/jira/servicedesks/${selectedServiceDesk.id}/requesttypes/${selectedRequestType.id}/fields`, log, 'Failed to fetch fields');
                 if (data && data.requestTypeFields) {
                     setFields(data.requestTypeFields);
                     const initialMappings = {};
@@ -63,8 +52,9 @@ export const TemplatesView = ({ log, templates, fetchTemplates, userFields }) =>
             };
             fetch();
         }
-    }, [selectedRequestType.id, selectedServiceDesk.id, safeFetch, userFields]);
+    }, [selectedRequestType.id, selectedServiceDesk.id, log, userFields]);
 
+    // ... The rest of the component remains the same
     const handleMappingChange = (fieldId, type, value) => {
         setFieldMappings(prev => ({ ...prev, [fieldId]: { type, value } }));
     };

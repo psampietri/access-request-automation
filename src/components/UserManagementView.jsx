@@ -7,6 +7,7 @@ export const UserManagementView = ({ log, users, userFields, fetchUsers, fetchUs
     const [newFieldName, setNewFieldName] = React.useState('');
     const [isUserModalOpen, setIsUserModalOpen] = React.useState(false);
     const [isFieldModalOpen, setIsFieldModalOpen] = React.useState(false);
+    const [confirmation, setConfirmation] = React.useState({isOpen: false, text: '', onConfirm: () => {}});
 
     const handleSaveUser = async (e) => {
         e.preventDefault();
@@ -28,16 +29,21 @@ export const UserManagementView = ({ log, users, userFields, fetchUsers, fetchUs
     };
 
     const handleDeleteUser = async (email) => {
-        if (confirm('Are you sure?')) {
-            try {
-                const res = await fetch(`${PROXY_ENDPOINT}/users/${email}`, { method: 'DELETE' });
-                if (!res.ok) throw new Error(`Server responded with ${res.status}`);
-                log('info', `User ${email} deleted.`);
-                fetchUsers();
-            } catch (error) {
-                log('error', `Error deleting user: ${error.message}`);
+        setConfirmation({
+            isOpen: true,
+            text: `Are you sure you want to delete the user ${email}?`,
+            onConfirm: async () => {
+                try {
+                    const res = await fetch(`${PROXY_ENDPOINT}/users/${email}`, { method: 'DELETE' });
+                    if (!res.ok) throw new Error(`Server responded with ${res.status}`);
+                    log('info', `User ${email} deleted.`);
+                    fetchUsers();
+                } catch (error) {
+                    log('error', `Error deleting user: ${error.message}`);
+                }
+                setConfirmation({ isOpen: false, text: '', onConfirm: () => {} });
             }
-        }
+        });
     };
 
     const handleAddField = async (e) => {
@@ -60,16 +66,21 @@ export const UserManagementView = ({ log, users, userFields, fetchUsers, fetchUs
     };
 
     const handleDeleteField = async (fieldName) => {
-        if (confirm(`Delete field '${fieldName}'? This cannot be undone.`)) {
-            try {
-                const res = await fetch(`${PROXY_ENDPOINT}/user-fields/${fieldName}`, { method: 'DELETE' });
-                if (!res.ok) throw new Error((await res.json()).error);
-                log('info', `Field '${fieldName}' removed.`);
-                fetchUserFields();
-            } catch (e) {
-                log('error', `Failed to delete field: ${e.message}`);
+        setConfirmation({
+            isOpen: true,
+            text: `Are you sure you want to delete the field '${fieldName}'? This cannot be undone.`,
+            onConfirm: async () => {
+                try {
+                    const res = await fetch(`${PROXY_ENDPOINT}/user-fields/${fieldName}`, { method: 'DELETE' });
+                    if (!res.ok) throw new Error((await res.json()).error);
+                    log('info', `Field '${fieldName}' removed.`);
+                    fetchUserFields();
+                } catch (e) {
+                    log('error', `Failed to delete field: ${e.message}`);
+                }
+                setConfirmation({ isOpen: false, text: '', onConfirm: () => {} });
             }
-        }
+        });
     };
 
     const openAddUserModal = () => {
@@ -125,7 +136,7 @@ export const UserManagementView = ({ log, users, userFields, fetchUsers, fetchUs
                                 {userFields.map(field => (
                                     <div key={field}>
                                         <label className="text-sm text-slate-400 block mb-1">{field}</label>
-                                        <input type="text" name={field} defaultValue={editingUser ? editingUser[field] : ''} required={['Name', 'Surname', 'E-mail'].includes(field)} readOnly={editingUser && field === 'E-mail'} className={`w-full bg-slate-700 p-2 text-sm rounded ${editingUser && field === 'E-mail' ? 'opacity-50' : ''}`} />
+                                        <input type="text" name={field} defaultValue={editingUser ? editingUser[field] : ''} required={['Name', 'Surname', 'E-mail'].includes(field)} readOnly={editingUser && field === 'E-mail'} className={`w-full bg-slate-700 p-2 text-sm rounded ${editingUser && field === 'E-mail' ? 'opacity-50 cursor-not-allowed' : ''}`}/>
                                     </div>
                                 ))}
                                 <div className="flex space-x-2 pt-2">
@@ -157,6 +168,34 @@ export const UserManagementView = ({ log, users, userFields, fetchUsers, fetchUs
                                 <input type="text" value={newFieldName} onChange={e => setNewFieldName(e.target.value)} placeholder="New Field Name" className="flex-grow bg-slate-700 p-2 text-sm rounded" required />
                                 <button type="submit" className="p-2 bg-blue-600 rounded">Add Field</button>
                             </form>
+                        </div>
+                    </div>
+                </div>
+            )}
+            {confirmation.isOpen && (
+                <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
+                    <div className="bg-slate-800 rounded-lg shadow-xl w-full max-w-md flex flex-col">
+                        <header className="flex justify-between items-center p-4 border-b border-slate-700">
+                            <h2 className="text-xl font-bold">Confirm Action</h2>
+                            <button onClick={() => setConfirmation({ isOpen: false, text: '', onConfirm: () => {} })}><XIcon c="w-6 h-6" /></button>
+                        </header>
+                        <div className="p-4">
+                            <p className="text-slate-300 mb-4">{confirmation.text}</p>
+                            <div className="flex space-x-2 pt-2">
+                                <button
+                                    onClick={confirmation.onConfirm}
+                                    className="flex-1 p-2 bg-red-600 hover:bg-red-700 rounded text-white font-semibold"
+                                >
+                                    Confirm
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setConfirmation({ isOpen: false, text: '', onConfirm: () => {} })}
+                                    className="flex-1 p-2 bg-slate-600 hover:bg-slate-700 rounded"
+                                >
+                                    Cancel
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
