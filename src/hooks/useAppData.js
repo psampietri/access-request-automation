@@ -8,6 +8,8 @@ export const useAppData = (log) => {
     const [templates, setTemplates] = React.useState([]);
     const [history, setHistory] = React.useState([]);
     const [jiraBaseUrl, setJiraBaseUrl] = React.useState('');
+    const [onboardingTemplates, setOnboardingTemplates] = React.useState([]);
+    const [onboardingInstances, setOnboardingInstances] = React.useState([]);
 
     const fetchUsers = React.useCallback(async () => {
         const data = await safeFetch(`${PROXY_ENDPOINT}/users`, log, 'Could not load users');
@@ -34,15 +36,27 @@ export const useAppData = (log) => {
         }
     }, [log]);
 
+    const fetchOnboardingTemplates = React.useCallback(async () => {
+        const data = await safeFetch(`${PROXY_ENDPOINT}/onboarding/templates`, log, 'Could not load onboarding templates');
+        if (data) setOnboardingTemplates(data);
+    }, [log]);
+
+    const fetchOnboardingInstances = React.useCallback(async () => {
+        const data = await safeFetch(`${PROXY_ENDPOINT}/onboarding/instances`, log, 'Could not load onboarding instances');
+        if (data) setOnboardingInstances(data);
+    }, [log]);
+
     React.useEffect(() => {
         fetchUsers();
         fetchTemplates();
         fetchUserFields();
         fetchHistory();
+        fetchOnboardingTemplates();
+        fetchOnboardingInstances();
 
         const intervalId = setInterval(fetchHistory, 3600000); // Sync every hour
         return () => clearInterval(intervalId);
-    }, [fetchUsers, fetchTemplates, fetchUserFields, fetchHistory]);
+    }, [fetchUsers, fetchTemplates, fetchUserFields, fetchHistory, fetchOnboardingTemplates, fetchOnboardingInstances]);
 
-    return { users, userFields, templates, history, jiraBaseUrl, fetchUsers, fetchUserFields, fetchTemplates, fetchHistory };
+    return { users, userFields, templates, history, jiraBaseUrl, onboardingTemplates, onboardingInstances, fetchUsers, fetchUserFields, fetchTemplates, fetchHistory, fetchOnboardingTemplates, fetchOnboardingInstances };
 };

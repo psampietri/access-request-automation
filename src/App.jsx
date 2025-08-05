@@ -5,22 +5,24 @@ import { AnalyticsView } from './components/AnalyticsView';
 import { TemplatesView } from './components/TemplatesView';
 import { ExecuteTemplateView } from './components/ExecuteTemplateView';
 import { UserManagementView } from './components/UserManagementView';
+import { OnboardingView } from './components/OnboardingView';
 import { LogEntry } from './components/LogEntry';
-import { SendIcon, FileTextIcon, UsersIcon, HistoryIcon, BarChartIcon } from './components/Icons';
+import { SendIcon, FileTextIcon, UsersIcon, HistoryIcon, BarChartIcon, ClipboardListIcon } from './components/Icons';
 
 export default function App() {
     const [activeView, setActiveView] = React.useState('execute');
     const [logs, setLogs] = React.useState([]);
-    
+    const [isOnboardingOpen, setIsOnboardingOpen] = React.useState(false);
+
     const log = React.useCallback((type, message) => {
         setLogs(prev => [{ type, message, id: Date.now() + Math.random() }, ...prev.slice(0, 100)]);
     }, []);
 
-    const { users, userFields, templates, history, jiraBaseUrl, fetchUsers, fetchUserFields, fetchTemplates, fetchHistory } = useAppData(log);
+    const { users, userFields, templates, history, jiraBaseUrl, onboardingTemplates, onboardingInstances, fetchUsers, fetchUserFields, fetchTemplates, fetchHistory, fetchOnboardingTemplates, fetchOnboardingInstances } = useAppData(log);
 
-    const TabButton = ({ viewName, icon, children }) => (
-        <button 
-            onClick={() => setActiveView(viewName)} 
+    const TabButton = ({ viewName, icon, children, onClick }) => (
+        <button
+            onClick={onClick || (() => setActiveView(viewName))}
             className={`flex items-center px-4 py-2 text-sm font-medium rounded-md transition-colors ${activeView === viewName ? 'bg-blue-600 text-white' : 'text-slate-300 hover:bg-slate-700'}`}
         >
             {icon}{children}
@@ -34,7 +36,7 @@ export default function App() {
                     <h1 className="text-4xl font-bold text-white">Access Request Automation Tool</h1>
                     <p className="text-slate-400 mt-2">Create, track, and analyze your Jira Service Desk requests.</p>
                 </header>
-                
+
                 <div className="flex justify-center mb-6">
                     <div className="flex space-x-2 p-1 bg-slate-800 rounded-lg">
                         <TabButton viewName="execute" icon={<SendIcon c="w-5 h-5 mr-2" />}>Execute</TabButton>
@@ -42,15 +44,25 @@ export default function App() {
                         <TabButton viewName="users" icon={<UsersIcon c="w-5 h-5 mr-2" />}>Users</TabButton>
                         <TabButton viewName="history" icon={<HistoryIcon c="w-5 h-5 mr-2" />}>History</TabButton>
                         <TabButton viewName="analytics" icon={<BarChartIcon c="w-5 h-5 mr-2" />}>Analytics</TabButton>
+                        <TabButton viewName="onboarding" icon={<ClipboardListIcon c="w-5 h-5 mr-2" />} onClick={() => { setActiveView('onboarding'); setIsOnboardingOpen(false); }}>Onboarding</TabButton>
                     </div>
                 </div>
-                
+
                 <div className="mb-6">
                     {activeView === 'execute' && <ExecuteTemplateView log={log} users={users} templates={templates} />}
                     {activeView === 'templates' && <TemplatesView log={log} templates={templates} fetchTemplates={fetchTemplates} userFields={userFields} />}
                     {activeView === 'users' && <UserManagementView log={log} users={users} userFields={userFields} fetchUsers={fetchUsers} fetchUserFields={fetchUserFields} />}
                     {activeView === 'history' && <HistoryView log={log} history={history} jiraBaseUrl={jiraBaseUrl} fetchHistory={fetchHistory} users={users} />}
                     {activeView === 'analytics' && <AnalyticsView log={log} />}
+                    {activeView === 'onboarding' && <OnboardingView
+                        log={log}
+                        users={users}
+                        templates={templates}
+                        onboardingTemplates={onboardingTemplates}
+                        onboardingInstances={onboardingInstances}
+                        fetchOnboardingTemplates={fetchOnboardingTemplates}
+                        fetchOnboardingInstances={fetchOnboardingInstances}
+                    />}
                 </div>
 
                 <div className="w-full bg-slate-800/50 p-2 rounded-lg border border-slate-700 h-40 flex flex-col">
