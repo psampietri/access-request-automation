@@ -121,6 +121,22 @@ app.post('/templates', async (req, res) => {
     }
 });
 
+app.get('/analytics/time_spent', async (req, res) => {
+    try {
+        const analyticsData = await db.all(`
+            SELECT
+                request_type_name,
+                AVG(CAST(strftime('%s', substr(closed_at, 1, 19)) - strftime('%s', substr(opened_at, 1, 19)) AS REAL)) / 3600 AS avg_hours
+            FROM requests
+            WHERE closed_at IS NOT NULL
+            GROUP BY request_type_name
+        `);
+        res.json(analyticsData);
+    } catch (e) {
+        res.status(500).json({ error: "Failed to fetch analytics data", details: e.message });
+    }
+});
+
 app.get('/requests', async (req, res) => {
     try {
         const ticketsToSync = await db.all("SELECT issue_key FROM requests WHERE closed_at IS NULL AND status != 'Deleted in Jira'");
@@ -302,7 +318,7 @@ app.post('/onboarding/instances/:instance_id/execute/:template_id', async (req, 
             'UPDATE onboarding_instance_statuses SET status = ?, issue_key = ? WHERE onboarding_instance_id = ? AND template_id = ?',
             [jiraResponse.currentStatus.status, jiraResponse.issueKey, instance_id, template_id]
         );
-
+        
         await db.run(
             `INSERT INTO requests (issue_key, user_email, request_type_name, status, opened_at) VALUES (?, ?, ?, ?, ?)`,
             [jiraResponse.issueKey, user['E-mail'], template.request_type_name, jiraResponse.currentStatus.status, new Date().toISOString()]
