@@ -40,11 +40,13 @@ export const TemplatesView = ({ log, templates, fetchTemplates, userFields }) =>
                 const data = await safeFetch(`${PROXY_ENDPOINT}/jira/servicedesks/${selectedServiceDesk.id}/requesttypes/${selectedRequestType.id}/fields`, log, 'Failed to fetch fields');
                 if (data && data.requestTypeFields) {
                     setFields(data.requestTypeFields);
-                    const initialMappings = {};
-                    data.requestTypeFields.filter(f => f.required).forEach(field => {
-                        initialMappings[field.fieldId] = { type: 'dynamic', value: userFields[0] };
-                    });
-                    setFieldMappings(initialMappings);
+                    if (!editingTemplate) {
+                        const initialMappings = {};
+                        data.requestTypeFields.filter(f => f.required).forEach(field => {
+                            initialMappings[field.fieldId] = { type: 'dynamic', value: userFields[0] };
+                        });
+                        setFieldMappings(initialMappings);
+                    }
                 } else {
                     setFields([]);
                     setFieldMappings({});
@@ -52,7 +54,7 @@ export const TemplatesView = ({ log, templates, fetchTemplates, userFields }) =>
             };
             fetch();
         }
-    }, [selectedRequestType.id, selectedServiceDesk.id, log, userFields]);
+    }, [selectedRequestType.id, selectedServiceDesk.id, log, userFields, editingTemplate]);
 
     // ... The rest of the component remains the same
     const handleMappingChange = (fieldId, type, value) => {
