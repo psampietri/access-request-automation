@@ -1,6 +1,6 @@
 import React from 'react';
 import { PROXY_ENDPOINT } from '../constants';
-import { TrashIcon, EditIcon, XIcon, SendIcon, EyeIcon, LinkIcon } from './Icons';
+import { TrashIcon, EditIcon, XIcon, SendIcon, EyeIcon, LinkIcon, CheckCircleIcon, RefreshCwIcon, LinkOffIcon } from './Icons';
 import { SparklineProgress } from './SparklineProgress';
 
 export const OnboardingView = ({ log, users, templates, onboardingTemplates, onboardingInstances, fetchOnboardingTemplates, fetchOnboardingInstances }) => {
@@ -16,6 +16,11 @@ export const OnboardingView = ({ log, users, templates, onboardingTemplates, onb
     const [selectedInstance, setSelectedInstance] = React.useState(null);
     const [associationInfo, setAssociationInfo] = React.useState({ instanceId: null, templateId: null });
     const [issueKey, setIssueKey] = React.useState('');
+    const [isManualAssociateModalOpen, setIsManualAssociateModalOpen] = React.useState(false);
+    const [manualIssueKey, setManualIssueKey] = React.useState('');
+    const [manualStatus, setManualStatus] = React.useState('');
+    const [isUpdateStatusModalOpen, setIsUpdateStatusModalOpen] = React.useState(false);
+    const [newStatus, setNewStatus] = React.useState('');
 
     const userMap = React.useMemo(() => {
         return users.reduce((acc, user) => {
@@ -158,6 +163,48 @@ export const OnboardingView = ({ log, users, templates, onboardingTemplates, onb
         }
     };
 
+    const handleManualAssociateRequest = async (e) => {
+        e.preventDefault();
+        const { instanceId, templateId } = associationInfo;
+        log('info', `Manually associating ticket ${manualIssueKey} with status "${manualStatus}"...`);
+        try {
+            const res = await fetch(`${PROXY_ENDPOINT}/onboarding/instances/${instanceId}/manual-associate/${templateId}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ issue_key: manualIssueKey, status: manualStatus })
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error);
+            log('success', `Ticket ${data.issueKey} associated.`);
+            fetchOnboardingInstances();
+            setIsManualAssociateModalOpen(false);
+            setManualIssueKey('');
+            setManualStatus('');
+        } catch (error) {
+            log('error', `Failed to manually associate ticket: ${error.message}`);
+        }
+    };
+
+    const handleUnassignTicket = async (instanceId, templateId, issueKey) => {
+        if (!confirm(`Are you sure you want to unassign ticket ${issueKey}? This will reset the task's progress.`)) {
+            return;
+        }
+        log('info', `Unassigning ticket ${issueKey}...`);
+        try {
+            const res = await fetch(`${PROXY_ENDPOINT}/onboarding/instances/${instanceId}/unassign/${templateId}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ issue_key: issueKey })
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error);
+            log('success', data.message);
+            fetchOnboardingInstances();
+        } catch (error) {
+            log('error', `Failed to unassign ticket: ${error.message}`);
+        }
+    };
+
     const openTemplateModal = (template = null) => {
         setEditingTemplate(template);
         setTemplateName(template ? template.name : '');
@@ -170,9 +217,41 @@ export const OnboardingView = ({ log, users, templates, onboardingTemplates, onb
         setIsInstanceDetailModalOpen(true);
     };
 
-    const openAssociateModal = (instanceId, templateId) => {
+    const openAssociateModal = (instanceId, templateId, isManual = false) => {
         setAssociationInfo({ instanceId, templateId });
-        setIsAssociateModalOpen(true);
+        if (isManual) {
+            setIsManualAssociateModalOpen(true);
+        } else {
+            setIsAssociateModalOpen(true);
+        }
+    };
+
+    const openUpdateStatusModal = (instanceId, templateId, currentStatus) => {
+        const instance = onboardingInstances.find(inst => inst.id === instanceId);
+        const statusInfo = instance?.statuses.find(s => s.template_id === templateId);
+        setAssociationInfo({ instanceId, templateId, issueKey: statusInfo?.issue_key });
+        setNewStatus(currentStatus);
+        setIsUpdateStatusModalOpen(true);
+    };
+
+    const handleUpdateStatus = async (e) => {
+        e.preventDefault();
+        const { instanceId, templateId, issueKey } = associationInfo;
+        log('info', `Updating status for ${issueKey} to "${newStatus}"...`);
+        try {
+            const res = await fetch(`${PROXY_ENDPOINT}/onboarding/instances/${instanceId}/status/${templateId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ status: newStatus, issue_key: issueKey })
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error);
+            log('success', data.message);
+            fetchOnboardingInstances();
+            setIsUpdateStatusModalOpen(false);
+        } catch (error) {
+            log('error', `Failed to update status: ${error.message}`);
+        }
     };
 
     return (
@@ -211,10 +290,10 @@ export const OnboardingView = ({ log, users, templates, onboardingTemplates, onb
                                             {completedTasks} / {totalTasks} tasks started
                                         </td>
                                         <td className="p-3">
-                                            <SparklineProgress 
-                                                closed={closedTasks} 
-                                                inProgress={inProgressTasks} 
-                                                total={totalTasks} 
+                                            <SparklineProgress
+                                                closed={closedTasks}
+                                                inProgress={inProgressTasks}
+                                                total={totalTasks}
                                             />
                                         </td>
                                         <td className="p-3 flex space-x-2">
@@ -255,8 +334,8 @@ export const OnboardingView = ({ log, users, templates, onboardingTemplates, onb
                                     <td className="p-3">{ot.name}</td>
                                     <td className="p-3 text-xs text-slate-400">{ot.template_names.join(', ')}</td>
                                     <td className="p-3 flex space-x-2">
-                                        <button onClick={() => openTemplateModal(ot)}><EditIcon c="w-4 h-4"/></button>
-                                        <button onClick={() => handleDeleteTemplate(ot.id)}><TrashIcon c="w-4 h-4"/></button>
+                                        <button onClick={() => openTemplateModal(ot)}><EditIcon c="w-4 h-4" /></button>
+                                        <button onClick={() => handleDeleteTemplate(ot.id)}><TrashIcon c="w-4 h-4" /></button>
                                     </td>
                                 </tr>
                             ))}
@@ -350,25 +429,53 @@ export const OnboardingView = ({ log, users, templates, onboardingTemplates, onb
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {selectedInstance?.statuses.map(s => (
-                                            <tr key={s.template_id} className="bg-slate-800 border-b border-slate-700">
-                                                <td className="p-3">{s.template_name}</td>
-                                                <td className="p-3">{s.status}</td>
-                                                <td className="p-3">{s.issue_key}</td>
-                                                <td className="p-3">
-                                                    {s.status === 'Not Started' && (
+                                        {selectedInstance?.statuses.map(s => {
+                                            const templateDetails = templates.find(t => t.template_id === s.template_id);
+                                            const isManual = templateDetails ? templateDetails.is_manual : false;
+                                            return (
+                                                <tr key={s.template_id} className="bg-slate-800 border-b border-slate-700">
+                                                    <td className="p-3">{s.template_name}</td>
+                                                    <td className="p-3">{s.status}</td>
+                                                    <td className="p-3">{s.issue_key || 'N/A'}</td>
+                                                    <td className="p-3">
                                                         <div className="flex space-x-2">
-                                                            <button onClick={() => handleExecuteRequest(selectedInstance.id, s.template_id)} className="text-blue-400 hover:text-blue-300" title="Submit Request">
-                                                                <SendIcon c="w-4 h-4" />
-                                                            </button>
-                                                            <button onClick={() => openAssociateModal(selectedInstance.id, s.template_id)} className="text-gray-400 hover:text-gray-300" title="Associate Ticket">
-                                                                <LinkIcon c="w-4 h-4" />
-                                                            </button>
+                                                            {(() => {
+                                                                if (isManual) {
+                                                                    if (s.issue_key) {
+                                                                        return (
+                                                                            <>
+                                                                                <button onClick={() => openUpdateStatusModal(selectedInstance.id, s.template_id, s.status)} className="text-cyan-400 hover:text-cyan-300" title="Update Status">
+                                                                                    <RefreshCwIcon c="w-4 h-4" />
+                                                                                </button>
+                                                                                <button onClick={() => handleUnassignTicket(selectedInstance.id, s.template_id, s.issue_key)} className="text-red-400 hover:text-red-300" title="Unassign Ticket">
+                                                                                    <LinkOffIcon c="w-4 h-4" />
+                                                                                </button>
+                                                                            </>
+                                                                        );
+                                                                    }
+                                                                    if (s.status === 'Not Started') {
+                                                                        return (
+                                                                            <>
+                                                                                <button onClick={() => handleMarkAsComplete(selectedInstance.id, s.template_id)} className="text-green-400 hover:text-green-300" title="Mark as Complete"><CheckCircleIcon c="w-4 h-4" /></button>
+                                                                                <button onClick={() => openAssociateModal(selectedInstance.id, s.template_id, true)} className="text-gray-400 hover:text-gray-300" title="Associate Ticket"><LinkIcon c="w-4 h-4" /></button>
+                                                                            </>
+                                                                        );
+                                                                    }
+                                                                } else if (s.status === 'Not Started') {
+                                                                    return (
+                                                                        <>
+                                                                            <button onClick={() => handleExecuteRequest(selectedInstance.id, s.template_id)} className="text-blue-400 hover:text-blue-300" title="Submit Request"><SendIcon c="w-4 h-4" /></button>
+                                                                            <button onClick={() => openAssociateModal(selectedInstance.id, s.template_id)} className="text-gray-400 hover:text-gray-300" title="Associate Ticket"><LinkIcon c="w-4 h-4" /></button>
+                                                                        </>
+                                                                    );
+                                                                }
+                                                                return null;
+                                                            })()}
                                                         </div>
-                                                    )}
-                                                </td>
-                                            </tr>
-                                        ))}
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
                                     </tbody>
                                 </table>
                             </div>
@@ -398,6 +505,60 @@ export const OnboardingView = ({ log, users, templates, onboardingTemplates, onb
                     </div>
                 </div>
             )}
+
+            {isManualAssociateModalOpen && (
+                <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
+                    <div className="bg-slate-800 rounded-lg shadow-xl w-full max-w-md">
+                        <header className="flex justify-between items-center p-4 border-b border-slate-700">
+                            <h2 className="text-xl font-bold">Manually Associate Ticket</h2>
+                            <button onClick={() => setIsManualAssociateModalOpen(false)}><XIcon c="w-6 h-6" /></button>
+                        </header>
+                        <form onSubmit={handleManualAssociateRequest} className="p-4 space-y-4">
+                            <input
+                                type="text"
+                                placeholder="Enter Issue Key (e.g., PROJ-123)"
+                                value={manualIssueKey}
+                                onChange={e => setManualIssueKey(e.target.value.toUpperCase())}
+                                className="w-full bg-slate-700 p-2 text-sm rounded"
+                                required
+                            />
+                            <input
+                                type="text"
+                                placeholder="Enter Ticket Status (e.g., In Progress)"
+                                value={manualStatus}
+                                onChange={e => setManualStatus(e.target.value)}
+                                className="w-full bg-slate-700 p-2 text-sm rounded"
+                                required
+                            />
+                            <button type="submit" className="w-full p-2 bg-purple-600 rounded-lg">Associate Ticket</button>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            {isUpdateStatusModalOpen && (
+                <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
+                    <div className="bg-slate-800 rounded-lg shadow-xl w-full max-w-md">
+                        <header className="flex justify-between items-center p-4 border-b border-slate-700">
+                            <h2 className="text-xl font-bold">Update Manual Task Status</h2>
+                            <button onClick={() => setIsUpdateStatusModalOpen(false)}><XIcon c="w-6 h-6" /></button>
+                        </header>
+                        <form onSubmit={handleUpdateStatus} className="p-4 space-y-4">
+                            <p className="text-sm text-slate-400">Update the status for ticket <span className="font-bold text-slate-200">{associationInfo.issueKey}</span>.</p>
+                            <input
+                                type="text"
+                                placeholder="Enter New Status"
+                                value={newStatus}
+                                onChange={e => setNewStatus(e.target.value)}
+                                className="w-full bg-slate-700 p-2 text-sm rounded"
+                                required
+                            />
+                            <button type="submit" className="w-full p-2 bg-cyan-600 rounded-lg">Update Status</button>
+                        </form>
+                    </div>
+                </div>
+            )}
+
         </>
     );
 };

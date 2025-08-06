@@ -9,6 +9,17 @@ export const initDb = async (dbFile) => {
     });
 
     await db.exec(`
+        CREATE TABLE IF NOT EXISTS templates (
+            template_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            template_name TEXT NOT NULL UNIQUE,
+            service_desk_id TEXT,      -- REMOVED NOT NULL
+            request_type_id TEXT,      -- REMOVED NOT NULL
+            service_desk_name TEXT,
+            request_type_name TEXT,
+            field_mappings TEXT,       -- REMOVED NOT NULL
+            is_manual INTEGER DEFAULT 0
+        );
+
         CREATE TABLE IF NOT EXISTS onboarding_templates (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL UNIQUE

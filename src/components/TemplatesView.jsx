@@ -1,6 +1,6 @@
 import React from 'react';
 import { PROXY_ENDPOINT } from '../constants';
-import { TrashIcon, EditIcon } from './Icons';
+import { TrashIcon, EditIcon, XIcon, FilePlusIcon } from './Icons';
 import { safeFetch } from '../utils/fetch'; // Import the new function
 
 export const TemplatesView = ({ log, templates, fetchTemplates, userFields }) => {
@@ -12,6 +12,9 @@ export const TemplatesView = ({ log, templates, fetchTemplates, userFields }) =>
     const [selectedRequestType, setSelectedRequestType] = React.useState({ id: '', name: '' });
     const [templateName, setTemplateName] = React.useState('');
     const [fieldMappings, setFieldMappings] = React.useState({});
+    const [isManualModalOpen, setIsManualModalOpen] = React.useState(false);
+    const [manualTemplateName, setManualTemplateName] = React.useState('');
+    const [isSubmittingManual, setIsSubmittingManual] = React.useState(false);
 
     React.useEffect(() => {
         const fetch = async () => {
@@ -20,6 +23,45 @@ export const TemplatesView = ({ log, templates, fetchTemplates, userFields }) =>
         };
         fetch();
     }, [log]);
+
+    React.useEffect(() => {
+        // This effect does nothing unless we are in a "submitting" state
+        if (!isSubmittingManual) {
+            return;
+        }
+
+        const save = async () => {
+            if (!manualTemplateName) {
+                log('error', 'Please provide a name for the manual template.');
+                setIsSubmittingManual(false); // Reset the state
+                return;
+            }
+            try {
+                const res = await fetch(`${PROXY_ENDPOINT}/templates`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        template_name: manualTemplateName,
+                        is_manual: true
+                    })
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || `Server responded with ${res.status}`);
+                log('success', `Manual template '${manualTemplateName}' saved!`);
+                fetchTemplates();
+                setIsManualModalOpen(false);
+                setManualTemplateName('');
+            } catch (error) {
+                log('error', `Could not save manual template: ${error.message}`);
+            } finally {
+                // IMPORTANT: Always reset the submitting state, whether it succeeded or failed
+                setIsSubmittingManual(false);
+            }
+        };
+
+        save();
+    }, [isSubmittingManual, manualTemplateName, fetchTemplates, log]); // Dependencies for the effect
+
 
     React.useEffect(() => {
         if (selectedServiceDesk.id) {
@@ -74,6 +116,12 @@ export const TemplatesView = ({ log, templates, fetchTemplates, userFields }) =>
             log('error', `Schema migration failed: ${error.message}`);
         }
     };
+
+    const handleSaveManualTemplate = (e) => {
+        e.preventDefault(); // Prevent the default browser form submission
+        setIsSubmittingManual(true); // This will trigger our useEffect to run the API call
+    };
+
 
     const handleMappingChange = (fieldId, type, value) => {
         const field = fields.find(f => f.fieldId === fieldId);
@@ -150,7 +198,12 @@ export const TemplatesView = ({ log, templates, fetchTemplates, userFields }) =>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div className="space-y-6">
                 <div className="bg-slate-800/50 p-6 rounded-lg border border-slate-700">
-                    <h2 className="text-xl font-semibold mb-4">{editingTemplate ? 'Edit Template' : '1. Create New Template'}</h2>
+                    <div className="flex justify-between items-center mb-4">
+                        <h2 className="text-xl font-semibold">{editingTemplate ? 'Edit Jira Template' : '1. Create New Jira Template'}</h2>
+                        <button onClick={() => setIsManualModalOpen(true)} className="flex items-center px-3 py-2 text-sm font-semibold text-white bg-purple-600 rounded-lg hover:bg-purple-700">
+                            <FilePlusIcon c="w-4 h-4 mr-2"/> Create Manual Template
+                        </button>
+                    </div>
                     <form className="space-y-4" onSubmit={handleSaveTemplate}>
                         <div className="grid md:grid-cols-2 gap-4">
                             <div>
@@ -220,27 +273,52 @@ export const TemplatesView = ({ log, templates, fetchTemplates, userFields }) =>
                 </div>
             </div>
             <div className="bg-slate-800/50 p-6 rounded-lg border border-slate-700">
-                <div className="flex justify-between items-center mb-4">
-                    <h2 className="text-xl font-semibold">Existing Templates</h2>
-                    <button onClick={handleMigrateSchemas} className="px-3 py-2 text-sm font-semibold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700">
-                        Migrate Schemas
-                    </button>
-                </div>
+                <h2 className="text-xl font-semibold mb-4">Existing Templates</h2>
                 <div className="max-h-[32rem] overflow-y-auto">
                     {templates.map(t => (
                         <div key={t.template_id} className="p-3 border-b border-slate-700 flex justify-between items-center">
                             <div>
                                 <p className="font-semibold text-white">{t.template_name}</p>
-                                <p className="text-xs text-slate-400">{t.service_desk_name} / {t.request_type_name}</p>
+                                <p className="text-xs text-slate-400">
+                                    {t.is_manual ? <span className="font-bold text-purple-400">Manual Task</span> : `${t.service_desk_name} / ${t.request_type_name}`}
+                                </p>
                             </div>
                             <div className="flex space-x-2">
-                                <button onClick={() => startEditing(t)} className="text-slate-400 hover:text-blue-400"><EditIcon c="w-4 h-4"/></button>
+                                {!t.is_manual && <button onClick={() => startEditing(t)} className="text-slate-400 hover:text-blue-400"><EditIcon c="w-4 h-4"/></button>}
                                 <button onClick={() => handleDeleteTemplate(t.template_id)} className="text-slate-400 hover:text-red-400"><TrashIcon c="w-4 h-4"/></button>
                             </div>
                         </div>
                     ))}
                 </div>
             </div>
+            {/* Manual Template Modal */}
+            {isManualModalOpen && (
+                 <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
+                    <div className="bg-slate-800 rounded-lg shadow-xl w-full max-w-md">
+                        <header className="flex justify-between items-center p-4 border-b border-slate-700">
+                            <h2 className="text-xl font-bold">Create Manual Template</h2>
+                            <button onClick={() => setIsManualModalOpen(false)}><XIcon c="w-6 h-6" /></button>
+                        </header>
+                        <form onSubmit={handleSaveManualTemplate} className="p-4 space-y-4">
+                            <input
+                                type="text"
+                                placeholder="Task Name (e.g., Send Welcome Email)"
+                                value={manualTemplateName}
+                                onChange={e => setManualTemplateName(e.target.value)}
+                                className="w-full bg-slate-700 p-2 text-sm rounded"
+                                required
+                            />
+                            <button 
+                                type="submit" 
+                                disabled={isSubmittingManual}
+                                className="w-full p-2 bg-purple-600 rounded-lg disabled:bg-slate-600"
+                            >
+                                {isSubmittingManual ? 'Saving...' : 'Save Manual Template'}
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
