@@ -1,6 +1,9 @@
 import React from 'react';
 import { PROXY_ENDPOINT } from '../constants';
-import { TrashIcon, EditIcon, XIcon, SendIcon, EyeIcon, LinkIcon, CheckCircleIcon, RefreshCwIcon, LinkOffIcon } from './Icons';
+import { 
+    TrashIcon, EditIcon, XIcon, SendIcon, EyeIcon, LinkIcon, 
+    CheckCircleIcon, RefreshCwIcon, LinkOffIcon, LockIcon, UnlockIcon 
+} from './Icons';
 import { SparklineProgress } from './SparklineProgress';
 
 export const OnboardingView = ({ log, users, templates, onboardingTemplates, onboardingInstances, fetchOnboardingTemplates, fetchOnboardingInstances }) => {
@@ -8,18 +11,21 @@ export const OnboardingView = ({ log, users, templates, onboardingTemplates, onb
     const [isInstanceModalOpen, setIsInstanceModalOpen] = React.useState(false);
     const [isInstanceDetailModalOpen, setIsInstanceDetailModalOpen] = React.useState(false);
     const [isAssociateModalOpen, setIsAssociateModalOpen] = React.useState(false);
+    const [isManualAssociateModalOpen, setIsManualAssociateModalOpen] = React.useState(false);
+    const [isUpdateStatusModalOpen, setIsUpdateStatusModalOpen] = React.useState(false);
+    
     const [editingTemplate, setEditingTemplate] = React.useState(null);
     const [templateName, setTemplateName] = React.useState('');
     const [selectedTemplateIds, setSelectedTemplateIds] = React.useState(new Set());
+    
     const [selectedUser, setSelectedUser] = React.useState('');
     const [selectedOnboardingTemplate, setSelectedOnboardingTemplate] = React.useState('');
     const [selectedInstance, setSelectedInstance] = React.useState(null);
-    const [associationInfo, setAssociationInfo] = React.useState({ instanceId: null, templateId: null });
+    
+    const [associationInfo, setAssociationInfo] = React.useState({ instanceId: null, templateId: null, issueKey: null });
     const [issueKey, setIssueKey] = React.useState('');
-    const [isManualAssociateModalOpen, setIsManualAssociateModalOpen] = React.useState(false);
     const [manualIssueKey, setManualIssueKey] = React.useState('');
     const [manualStatus, setManualStatus] = React.useState('');
-    const [isUpdateStatusModalOpen, setIsUpdateStatusModalOpen] = React.useState(false);
     const [newStatus, setNewStatus] = React.useState('');
 
     const userMap = React.useMemo(() => {
@@ -28,18 +34,15 @@ export const OnboardingView = ({ log, users, templates, onboardingTemplates, onb
             return acc;
         }, {});
     }, [users]);
-
+    
     React.useEffect(() => {
-        // If the detail modal is open, find the latest version of the selected instance
-        // from the main list and update our local state to refresh the modal.
         if (isInstanceDetailModalOpen && selectedInstance) {
             const updatedInstance = onboardingInstances.find(inst => inst.id === selectedInstance.id);
             if (updatedInstance) {
                 setSelectedInstance(updatedInstance);
             }
         }
-    }, [onboardingInstances]); // This effect runs whenever the main instances list changes
-
+    }, [onboardingInstances, isInstanceDetailModalOpen, selectedInstance]);
 
     const handleSaveTemplate = async (e) => {
         e.preventDefault();
@@ -49,7 +52,7 @@ export const OnboardingView = ({ log, users, templates, onboardingTemplates, onb
         }
         const payload = {
             name: templateName,
-            template_ids: Array.from(selectedTemplateIds)
+            template_ids: Array.from(selectedTemplateIds),
         };
         const url = editingTemplate
             ? `${PROXY_ENDPOINT}/onboarding/templates/${editingTemplate.id}`
@@ -72,7 +75,7 @@ export const OnboardingView = ({ log, users, templates, onboardingTemplates, onb
             log('error', `Failed to save onboarding template: ${error.message}`);
         }
     };
-
+    
     const handleDeleteTemplate = async (templateId) => {
         if (confirm('Are you sure you want to delete this onboarding template?')) {
             try {
@@ -163,6 +166,21 @@ export const OnboardingView = ({ log, users, templates, onboardingTemplates, onb
         }
     };
 
+    const handleMarkAsComplete = async (instanceId, templateId) => {
+        log('info', `Marking manual task for template ${templateId} as complete...`);
+        try {
+            const res = await fetch(`${PROXY_ENDPOINT}/onboarding/instances/${instanceId}/manual-complete/${templateId}`, {
+                method: 'POST'
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error);
+            log('success', data.message);
+            fetchOnboardingInstances();
+        } catch (error) {
+            log('error', `Failed to mark task as complete: ${error.message}`);
+        }
+    };
+
     const handleManualAssociateRequest = async (e) => {
         e.preventDefault();
         const { instanceId, templateId } = associationInfo;
@@ -182,6 +200,26 @@ export const OnboardingView = ({ log, users, templates, onboardingTemplates, onb
             setManualStatus('');
         } catch (error) {
             log('error', `Failed to manually associate ticket: ${error.message}`);
+        }
+    };
+
+    const handleUpdateStatus = async (e) => {
+        e.preventDefault();
+        const { instanceId, templateId, issueKey } = associationInfo;
+        log('info', `Updating status for ${issueKey} to "${newStatus}"...`);
+        try {
+            const res = await fetch(`${PROXY_ENDPOINT}/onboarding/instances/${instanceId}/status/${templateId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ status: newStatus, issue_key: issueKey })
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error);
+            log('success', data.message);
+            fetchOnboardingInstances();
+            setIsUpdateStatusModalOpen(false);
+        } catch (error) {
+            log('error', `Failed to update status: ${error.message}`);
         }
     };
 
@@ -205,10 +243,29 @@ export const OnboardingView = ({ log, users, templates, onboardingTemplates, onb
         }
     };
 
+    const handleBypass = async (instanceId, templateId) => {
+        if (!confirm('Are you sure you want to bypass this dependency? This will unlock the task.')) {
+            return;
+        }
+        log('info', `Bypassing dependency for task...`);
+        try {
+            const res = await fetch(`${PROXY_ENDPOINT}/onboarding/instances/${instanceId}/bypass/${templateId}`, {
+                method: 'POST',
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error);
+            log('success', data.message);
+            fetchOnboardingInstances();
+        } catch (error) {
+            log('error', `Failed to bypass dependency: ${error.message}`);
+        }
+    };
+
     const openTemplateModal = (template = null) => {
         setEditingTemplate(template);
         setTemplateName(template ? template.name : '');
         setSelectedTemplateIds(template ? new Set(template.template_ids) : new Set());
+        // --- THIS LINE IS NOW REMOVED ---
         setIsTemplateModalOpen(true);
     };
 
@@ -234,26 +291,6 @@ export const OnboardingView = ({ log, users, templates, onboardingTemplates, onb
         setIsUpdateStatusModalOpen(true);
     };
 
-    const handleUpdateStatus = async (e) => {
-        e.preventDefault();
-        const { instanceId, templateId, issueKey } = associationInfo;
-        log('info', `Updating status for ${issueKey} to "${newStatus}"...`);
-        try {
-            const res = await fetch(`${PROXY_ENDPOINT}/onboarding/instances/${instanceId}/status/${templateId}`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ status: newStatus, issue_key: issueKey })
-            });
-            const data = await res.json();
-            if (!res.ok) throw new Error(data.error);
-            log('success', data.message);
-            fetchOnboardingInstances();
-            setIsUpdateStatusModalOpen(false);
-        } catch (error) {
-            log('error', `Failed to update status: ${error.message}`);
-        }
-    };
-
     return (
         <>
             <div className="bg-slate-800/50 p-6 rounded-lg border border-slate-700">
@@ -276,10 +313,11 @@ export const OnboardingView = ({ log, users, templates, onboardingTemplates, onb
                         </thead>
                         <tbody>
                             {onboardingInstances.map(inst => {
-                                const closedTasks = inst.statuses.filter(s => s.status.toLowerCase() === 'closed' || s.status.toLowerCase() === 'done').length;
-                                const inProgressTasks = inst.statuses.filter(s => s.status.toLowerCase() !== 'not started' && s.status.toLowerCase() !== 'closed' && s.status.toLowerCase() !== 'done').length;
+                                const closedTasks = inst.statuses.filter(s => ['closed', 'done', 'completed'].includes(s.status.toLowerCase())).length;
+                                const inProgressTasks = inst.statuses.filter(s => s.status.toLowerCase() !== 'not started' && !['closed', 'done', 'completed'].includes(s.status.toLowerCase())).length;
                                 const totalTasks = inst.statuses.length;
                                 const completedTasks = closedTasks + inProgressTasks;
+
                                 return (
                                     <tr key={inst.id} className="bg-slate-800 border-b border-slate-700">
                                         <td className="p-3" title={inst.user_email}>
@@ -290,10 +328,10 @@ export const OnboardingView = ({ log, users, templates, onboardingTemplates, onb
                                             {completedTasks} / {totalTasks} tasks started
                                         </td>
                                         <td className="p-3">
-                                            <SparklineProgress
-                                                closed={closedTasks}
-                                                inProgress={inProgressTasks}
-                                                total={totalTasks}
+                                            <SparklineProgress 
+                                                closed={closedTasks} 
+                                                inProgress={inProgressTasks} 
+                                                total={totalTasks} 
                                             />
                                         </td>
                                         <td className="p-3 flex space-x-2">
@@ -334,8 +372,8 @@ export const OnboardingView = ({ log, users, templates, onboardingTemplates, onb
                                     <td className="p-3">{ot.name}</td>
                                     <td className="p-3 text-xs text-slate-400">{ot.template_names.join(', ')}</td>
                                     <td className="p-3 flex space-x-2">
-                                        <button onClick={() => openTemplateModal(ot)}><EditIcon c="w-4 h-4" /></button>
-                                        <button onClick={() => handleDeleteTemplate(ot.id)}><TrashIcon c="w-4 h-4" /></button>
+                                        <button onClick={() => openTemplateModal(ot)}><EditIcon c="w-4 h-4"/></button>
+                                        <button onClick={() => handleDeleteTemplate(ot.id)}><TrashIcon c="w-4 h-4"/></button>
                                     </td>
                                 </tr>
                             ))}
@@ -414,7 +452,7 @@ export const OnboardingView = ({ log, users, templates, onboardingTemplates, onb
                 <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
                     <div className="bg-slate-800 rounded-lg shadow-xl w-full max-w-2xl">
                         <header className="flex justify-between items-center p-4 border-b border-slate-700">
-                            <h2 className="text-xl font-bold">Onboarding Details for {selectedInstance?.user_email}</h2>
+                            <h2 className="text-xl font-bold">Onboarding Details for {userMap[selectedInstance?.user_email] || selectedInstance?.user_email}</h2>
                             <button onClick={() => setIsInstanceDetailModalOpen(false)}><XIcon c="w-6 h-6" /></button>
                         </header>
                         <div className="p-4">
@@ -432,45 +470,64 @@ export const OnboardingView = ({ log, users, templates, onboardingTemplates, onb
                                         {selectedInstance?.statuses.map(s => {
                                             const templateDetails = templates.find(t => t.template_id === s.template_id);
                                             const isManual = templateDetails ? templateDetails.is_manual : false;
+                                            
                                             return (
-                                                <tr key={s.template_id} className="bg-slate-800 border-b border-slate-700">
-                                                    <td className="p-3">{s.template_name}</td>
+                                                <tr key={s.template_id} className={`bg-slate-800 border-b border-slate-700 ${s.isLocked ? 'opacity-60' : ''}`}>
+                                                    <td className="p-3">
+                                                        <div className="flex items-center">
+                                                            {s.isLocked && <LockIcon c="w-4 h-4 mr-2 text-yellow-400"/>}
+                                                            <div>
+                                                                <span className="font-semibold text-white">{s.template_name}</span>
+                                                                {s.dependencies && s.dependencies.length > 0 && (
+                                                                    <div className="text-xs text-slate-400 mt-1">
+                                                                        Depends on: {s.dependencies.map(depId => templates.find(t => t.template_id === depId)?.template_name).join(', ')}
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    </td>
                                                     <td className="p-3">{s.status}</td>
                                                     <td className="p-3">{s.issue_key || 'N/A'}</td>
                                                     <td className="p-3">
                                                         <div className="flex space-x-2">
-                                                            {(() => {
-                                                                if (isManual) {
-                                                                    if (s.issue_key) {
+                                                            {s.isLocked ? (
+                                                                <button onClick={() => handleBypass(selectedInstance.id, s.template_id)} className="text-yellow-400 hover:text-yellow-300" title="Bypass Dependency">
+                                                                    <UnlockIcon c="w-4 h-4" />
+                                                                </button>
+                                                            ) : (
+                                                                (() => {
+                                                                    if (isManual) {
+                                                                        if (s.issue_key) {
+                                                                            return (
+                                                                                <>
+                                                                                    <button onClick={() => openUpdateStatusModal(selectedInstance.id, s.template_id, s.status)} className="text-cyan-400 hover:text-cyan-300" title="Update Status">
+                                                                                        <RefreshCwIcon c="w-4 h-4" />
+                                                                                    </button>
+                                                                                    <button onClick={() => handleUnassignTicket(selectedInstance.id, s.template_id, s.issue_key)} className="text-red-400 hover:text-red-300" title="Unassign Ticket">
+                                                                                        <LinkOffIcon c="w-4 h-4" />
+                                                                                    </button>
+                                                                                </>
+                                                                            );
+                                                                        }
+                                                                        if (s.status === 'Not Started') {
+                                                                            return (
+                                                                                <>
+                                                                                    <button onClick={() => handleMarkAsComplete(selectedInstance.id, s.template_id)} className="text-green-400 hover:text-green-300" title="Mark as Complete"><CheckCircleIcon c="w-4 h-4" /></button>
+                                                                                    <button onClick={() => openAssociateModal(selectedInstance.id, s.template_id, true)} className="text-gray-400 hover:text-gray-300" title="Associate Ticket"><LinkIcon c="w-4 h-4" /></button>
+                                                                                </>
+                                                                            );
+                                                                        }
+                                                                    } else if (s.status === 'Not Started') {
                                                                         return (
                                                                             <>
-                                                                                <button onClick={() => openUpdateStatusModal(selectedInstance.id, s.template_id, s.status)} className="text-cyan-400 hover:text-cyan-300" title="Update Status">
-                                                                                    <RefreshCwIcon c="w-4 h-4" />
-                                                                                </button>
-                                                                                <button onClick={() => handleUnassignTicket(selectedInstance.id, s.template_id, s.issue_key)} className="text-red-400 hover:text-red-300" title="Unassign Ticket">
-                                                                                    <LinkOffIcon c="w-4 h-4" />
-                                                                                </button>
+                                                                                <button onClick={() => handleExecuteRequest(selectedInstance.id, s.template_id)} className="text-blue-400 hover:text-blue-300" title="Submit Request"><SendIcon c="w-4 h-4" /></button>
+                                                                                <button onClick={() => openAssociateModal(selectedInstance.id, s.template_id)} className="text-gray-400 hover:text-gray-300" title="Associate Ticket"><LinkIcon c="w-4 h-4" /></button>
                                                                             </>
                                                                         );
                                                                     }
-                                                                    if (s.status === 'Not Started') {
-                                                                        return (
-                                                                            <>
-                                                                                <button onClick={() => handleMarkAsComplete(selectedInstance.id, s.template_id)} className="text-green-400 hover:text-green-300" title="Mark as Complete"><CheckCircleIcon c="w-4 h-4" /></button>
-                                                                                <button onClick={() => openAssociateModal(selectedInstance.id, s.template_id, true)} className="text-gray-400 hover:text-gray-300" title="Associate Ticket"><LinkIcon c="w-4 h-4" /></button>
-                                                                            </>
-                                                                        );
-                                                                    }
-                                                                } else if (s.status === 'Not Started') {
-                                                                    return (
-                                                                        <>
-                                                                            <button onClick={() => handleExecuteRequest(selectedInstance.id, s.template_id)} className="text-blue-400 hover:text-blue-300" title="Submit Request"><SendIcon c="w-4 h-4" /></button>
-                                                                            <button onClick={() => openAssociateModal(selectedInstance.id, s.template_id)} className="text-gray-400 hover:text-gray-300" title="Associate Ticket"><LinkIcon c="w-4 h-4" /></button>
-                                                                        </>
-                                                                    );
-                                                                }
-                                                                return null;
-                                                            })()}
+                                                                    return null;
+                                                                })()
+                                                            )}
                                                         </div>
                                                     </td>
                                                 </tr>
@@ -483,7 +540,7 @@ export const OnboardingView = ({ log, users, templates, onboardingTemplates, onb
                     </div>
                 </div>
             )}
-
+            
             {isAssociateModalOpen && (
                 <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
                     <div className="bg-slate-800 rounded-lg shadow-xl w-full max-w-md">
@@ -535,7 +592,7 @@ export const OnboardingView = ({ log, users, templates, onboardingTemplates, onb
                     </div>
                 </div>
             )}
-
+            
             {isUpdateStatusModalOpen && (
                 <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
                     <div className="bg-slate-800 rounded-lg shadow-xl w-full max-w-md">
@@ -558,7 +615,6 @@ export const OnboardingView = ({ log, users, templates, onboardingTemplates, onb
                     </div>
                 </div>
             )}
-
         </>
     );
 };
