@@ -1,4 +1,4 @@
-import { callJiraApi } from '../jira.js';
+import { getJiraIssueDetails } from '../jira.js';
 
 export const requestsRoutes = (app, db, JIRA_BASE_URL) => {
     app.get('/requests', async (req, res) => {
@@ -6,7 +6,7 @@ export const requestsRoutes = (app, db, JIRA_BASE_URL) => {
             const ticketsToSync = await db.all("SELECT issue_key FROM requests WHERE closed_at IS NULL AND status != 'Deleted in Jira'");
             for (const row of ticketsToSync) {
                 try {
-                    const issueData = await callJiraApi(`/rest/servicedeskapi/request/${row.issue_key}`);
+                    const issueData = await getJiraIssueDetails(row.issue_key);
                     const status = issueData.currentStatus.status;
                     if (issueData.currentStatus.statusCategory === 'DONE') {
                         const closedAt = issueData.currentStatus.statusDate.iso8601;
@@ -29,6 +29,42 @@ export const requestsRoutes = (app, db, JIRA_BASE_URL) => {
         res.json({ requests: history, jira_base_url: JIRA_BASE_URL });
     });
 
+    app.post('/requests/manual', async (req, res) => {
+        const { issue_keys } = req.body;
+        const success = [];
+        const failed = [];
+
+        for (const key of issue_keys) {
+            try {
+                const existing = await db.get('SELECT * FROM requests WHERE issue_key = ?', key);
+                if (existing) {
+                    failed.push({ key, reason: 'Already tracked' });
+                    continue;
+                }
+                const issueData = await getJiraIssueDetails(key);
+
+                const requestTypeName = issueData?.requestType?.name || 'N/A';
+                const currentStatus = issueData?.currentStatus?.status || 'N/A';
+                const createdDate = issueData?.createdDate?.iso8601 || new Date().toISOString();
+
+                await db.run(
+                    'INSERT INTO requests (issue_key, user_email, request_type_name, status, opened_at) VALUES (?, ?, ?, ?, ?)',
+                    [
+                        issueData.issueKey,
+                        'N/A', // Manual entry might not have a user initially
+                        requestTypeName,
+                        currentStatus,
+                        createdDate
+                    ]
+                );
+                success.push(key);
+            } catch (error) {
+                failed.push({ key, reason: error.message || 'Failed to fetch from Jira' });
+            }
+        }
+        res.json({ success, failed });
+    });
+
     app.put('/requests/:issue_key/assign', async (req, res) => {
         const { issue_key } = req.params;
         const { user_email } = req.body;
@@ -46,6 +82,16 @@ export const requestsRoutes = (app, db, JIRA_BASE_URL) => {
             res.json({ success: true, issue_key, assigned_to: user_email });
         } catch (e) {
             res.status(500).json({ error: "Failed to assign user", details: e.message });
+        }
+    });
+
+    app.delete('/requests/:issue_key', async (req, res) => {
+        const { issue_key } = req.params;
+        try {
+            await db.run('DELETE FROM requests WHERE issue_key = ?', [issue_key]);
+            res.json({ success: true });
+        } catch (e) {
+            res.status(500).json({ error: 'Failed to delete request', details: e.message });
         }
     });
 };

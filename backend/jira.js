@@ -30,3 +30,34 @@ export const callJiraApi = async (endpoint, method = 'GET', payload = null) => {
         throw error;
     }
 };
+
+export const getJiraIssueDetails = async (issueKey) => {
+    try {
+        // First, try the Service Desk API
+        const serviceDeskIssue = await callJiraApi(`/rest/servicedeskapi/request/${issueKey}`);
+        return serviceDeskIssue;
+    } catch (error) {
+        if (error.status === 404) {
+            // If not found, try the generic Jira API
+            try {
+                const genericIssue = await callJiraApi(`/rest/api/2/issue/${issueKey}`);
+                // Normalize the response to match the Service Desk API structure
+                return {
+                    issueKey: genericIssue.key,
+                    requestType: { name: genericIssue.fields.issuetype.name },
+                    createdDate: { iso8601: genericIssue.fields.created },
+                    currentStatus: {
+                        status: genericIssue.fields.status.name,
+                        statusCategory: genericIssue.fields.status.statusCategory.key,
+                        statusDate: { iso8601: genericIssue.fields.resolutiondate || genericIssue.fields.updated }
+                    }
+                };
+            } catch (genericError) {
+                // If the generic API also fails, throw that error
+                throw genericError;
+            }
+        }
+        // If the error was not a 404, re-throw it
+        throw error;
+    }
+};

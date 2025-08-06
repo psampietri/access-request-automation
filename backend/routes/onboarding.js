@@ -1,4 +1,5 @@
-import { callJiraApi } from '../jira.js';
+import { callJiraApi, getJiraIssueDetails } from '../jira.js';
+import { formatJiraPayload } from '../utils.js'; 
 
 export const onboardingRoutes = (app, db) => {
     app.get('/onboarding/templates', async (req, res) => {
@@ -171,26 +172,36 @@ export const onboardingRoutes = (app, db) => {
 
         try {
             // 1. Validate the issue with Jira
-            const jiraResponse = await callJiraApi(`/rest/servicedeskapi/request/${issue_key}`);
+            const jiraResponse = await getJiraIssueDetails(issue_key);
+
+            const currentStatus = jiraResponse?.currentStatus?.status || 'N/A';
+            const issueKey = jiraResponse?.issueKey;
+
+            if (!issueKey) {
+                throw new Error("Invalid Jira response: issueKey is missing.");
+            }
 
             // 2. Update the onboarding_instance_statuses table
             await db.run(
                 'UPDATE onboarding_instance_statuses SET status = ?, issue_key = ? WHERE onboarding_instance_id = ? AND template_id = ?',
-                [jiraResponse.currentStatus.status, jiraResponse.issueKey, instance_id, template_id]
+                [currentStatus, issueKey, instance_id, template_id]
             );
 
             // 3. (Optional) Add to the main requests table if it doesn't exist
-            const existingRequest = await db.get('SELECT * FROM requests WHERE issue_key = ?', [jiraResponse.issueKey]);
+            const existingRequest = await db.get('SELECT * FROM requests WHERE issue_key = ?', [issueKey]);
             if (!existingRequest) {
                 const instance = await db.get('SELECT user_email FROM onboarding_instances WHERE id = ?', [instance_id]);
                 const template = await db.get('SELECT request_type_name FROM templates WHERE template_id = ?', [template_id]);
+                const requestTypeName = template?.request_type_name || 'N/A';
+                const createdDate = jiraResponse?.createdDate?.iso8601 || new Date().toISOString();
+
                 await db.run(
                     `INSERT INTO requests (issue_key, user_email, request_type_name, status, opened_at) VALUES (?, ?, ?, ?, ?)`,
-                    [jiraResponse.issueKey, instance.user_email, template.request_type_name, jiraResponse.currentStatus.status, new Date().toISOString()]
+                    [issueKey, instance.user_email, requestTypeName, currentStatus, createdDate]
                 );
             }
 
-            res.json({ success: true, issueKey: jiraResponse.issueKey });
+            res.json({ success: true, issueKey: issueKey });
         } catch (error) {
             res.status(500).json({ error: 'Failed to associate request', details: error.message });
         }
@@ -205,19 +216,13 @@ export const onboardingRoutes = (app, db) => {
             const template = await db.get('SELECT * FROM templates WHERE template_id = ?', [template_id]);
             const fieldMappings = JSON.parse(template.field_mappings);
 
+            const requestFieldValues = formatJiraPayload(fieldMappings, user);
+
             const requestData = {
                 serviceDeskId: template.service_desk_id,
                 requestTypeId: template.request_type_id,
-                requestFieldValues: {}
+                requestFieldValues: requestFieldValues
             };
-
-            for (const [fieldId, mapping] of Object.entries(fieldMappings)) {
-                if (mapping.type === 'dynamic') {
-                    requestData.requestFieldValues[fieldId] = user[mapping.value];
-                } else {
-                    requestData.requestFieldValues[fieldId] = mapping.value;
-                }
-            }
 
             const jiraResponse = await callJiraApi('/rest/servicedeskapi/request', 'POST', requestData);
             await db.run(

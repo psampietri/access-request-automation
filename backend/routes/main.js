@@ -1,6 +1,56 @@
 import { callJiraApi } from '../jira.js';
+import { formatJiraPayload } from '../utils.js';
 
 export const mainRoutes = (app, db) => {
+
+    app.post('/templates/migrate-schemas', async (req, res) => {
+        console.log('Starting schema migration for all templates...');
+        try {
+            const templates = await db.all('SELECT * FROM templates');
+            let updatedCount = 0;
+
+            for (const template of templates) {
+                try {
+                    const fieldsData = await callJiraApi(`/rest/servicedeskapi/servicedesk/${template.service_desk_id}/requesttype/${template.request_type_id}/field`);
+
+                    if (fieldsData && fieldsData.requestTypeFields) {
+                        const fieldMappings = JSON.parse(template.field_mappings);
+                        let needsUpdate = false;
+
+                        for (const [fieldId, mapping] of Object.entries(fieldMappings)) {
+                            // Check if the jiraSchema is missing or incomplete
+                            if (!mapping.jiraSchema || typeof mapping.jiraSchema.type === 'undefined') {
+                                const field = fieldsData.requestTypeFields.find(f => f.fieldId === fieldId);
+                                if (field) {
+                                    mapping.jiraSchema = field.jiraSchema;
+                                    needsUpdate = true;
+                                }
+                            }
+                        }
+
+                        if (needsUpdate) {
+                            await db.run(
+                                "UPDATE templates SET field_mappings = ? WHERE template_id = ?",
+                                [JSON.stringify(fieldMappings), template.template_id]
+                            );
+                            updatedCount++;
+                        }
+                    }
+                } catch (e) {
+                    console.error(`Could not migrate schema for template ${template.template_name}: ${e.message}`);
+                }
+            }
+            const successMessage = `Schema migration completed. Updated ${updatedCount} templates.`;
+            console.log(successMessage);
+            res.json({ success: true, message: successMessage });
+
+        } catch (e) {
+            const errorMessage = `Failed to migrate schemas: ${e.message}`;
+            console.error(errorMessage);
+            res.status(500).json({ error: errorMessage });
+        }
+    });
+
     app.post('/execute-template', async (req, res) => {
         const { template_id, user_emails, is_dry_run } = req.body;
 
@@ -11,14 +61,7 @@ export const mainRoutes = (app, db) => {
 
             const results = [];
             for (const user of users) {
-                const requestFieldValues = {};
-                for (const [fieldId, mapping] of Object.entries(fieldMappings)) {
-                    if (mapping.type === 'dynamic') {
-                        requestFieldValues[fieldId] = user[mapping.value];
-                    } else {
-                        requestFieldValues[fieldId] = mapping.value;
-                    }
-                }
+                const requestFieldValues = formatJiraPayload(fieldMappings, user);
 
                 const payload = {
                     serviceDeskId: template.service_desk_id,

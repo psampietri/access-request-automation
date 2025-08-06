@@ -43,7 +43,11 @@ export const TemplatesView = ({ log, templates, fetchTemplates, userFields }) =>
                     if (!editingTemplate) {
                         const initialMappings = {};
                         data.requestTypeFields.filter(f => f.required).forEach(field => {
-                            initialMappings[field.fieldId] = { type: 'dynamic', value: userFields[0] };
+                            initialMappings[field.fieldId] = {
+                                type: 'dynamic',
+                                value: userFields[0],
+                                jiraSchema: field.jiraSchema // <-- Add this line
+                            };
                         });
                         setFieldMappings(initialMappings);
                     }
@@ -57,8 +61,31 @@ export const TemplatesView = ({ log, templates, fetchTemplates, userFields }) =>
     }, [selectedRequestType.id, selectedServiceDesk.id, log, userFields, editingTemplate]);
 
     // ... The rest of the component remains the same
+    
+    const handleMigrateSchemas = async () => {
+        log('info', 'Starting schema migration for existing templates...');
+        try {
+            const res = await fetch(`${PROXY_ENDPOINT}/templates/migrate-schemas`, { method: 'POST' });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error);
+            log('success', data.message);
+            fetchTemplates(); // Refresh templates after migration
+        } catch (error) {
+            log('error', `Schema migration failed: ${error.message}`);
+        }
+    };
+
     const handleMappingChange = (fieldId, type, value) => {
-        setFieldMappings(prev => ({ ...prev, [fieldId]: { type, value } }));
+        const field = fields.find(f => f.fieldId === fieldId);
+        setFieldMappings(prev => ({
+            ...prev,
+            [fieldId]: {
+                ...prev[fieldId],
+                type,
+                value,
+                jiraSchema: field ? field.jiraSchema : prev[fieldId]?.jiraSchema
+            }
+        }));
     };
 
     const handleSaveTemplate = async (e) => {
@@ -193,7 +220,12 @@ export const TemplatesView = ({ log, templates, fetchTemplates, userFields }) =>
                 </div>
             </div>
             <div className="bg-slate-800/50 p-6 rounded-lg border border-slate-700">
-                <h2 className="text-xl font-semibold mb-4">Existing Templates</h2>
+                <div className="flex justify-between items-center mb-4">
+                    <h2 className="text-xl font-semibold">Existing Templates</h2>
+                    <button onClick={handleMigrateSchemas} className="px-3 py-2 text-sm font-semibold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700">
+                        Migrate Schemas
+                    </button>
+                </div>
                 <div className="max-h-[32rem] overflow-y-auto">
                     {templates.map(t => (
                         <div key={t.template_id} className="p-3 border-b border-slate-700 flex justify-between items-center">

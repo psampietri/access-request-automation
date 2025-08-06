@@ -16,6 +16,18 @@ export const OnboardingView = ({ log, users, templates, onboardingTemplates, onb
     const [associationInfo, setAssociationInfo] = React.useState({ instanceId: null, templateId: null });
     const [issueKey, setIssueKey] = React.useState('');
 
+    React.useEffect(() => {
+        // If the detail modal is open, find the latest version of the selected instance
+        // from the main list and update our local state to refresh the modal.
+        if (isInstanceDetailModalOpen && selectedInstance) {
+            const updatedInstance = onboardingInstances.find(inst => inst.id === selectedInstance.id);
+            if (updatedInstance) {
+                setSelectedInstance(updatedInstance);
+            }
+        }
+    }, [onboardingInstances]); // This effect runs whenever the main instances list changes
+
+
     const handleSaveTemplate = async (e) => {
         e.preventDefault();
         if (!templateName || selectedTemplateIds.size === 0) {
@@ -353,7 +365,7 @@ export const OnboardingView = ({ log, users, templates, onboardingTemplates, onb
                                 type="text"
                                 placeholder="Enter Issue Key (e.g., PROJ-123)"
                                 value={issueKey}
-                                onChange={e => setIssueKey(e.target.value)}
+                                onChange={e => setIssueKey(e.target.value.toUpperCase())}
                                 className="w-full bg-slate-700 p-2 text-sm rounded"
                                 required
                             />
