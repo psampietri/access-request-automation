@@ -2,24 +2,27 @@ import express from 'express';
 import cors from 'cors';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import dotenv from 'dotenv';
 import fs from 'fs/promises';
 import { initDb } from './db.js';
 import { initJira } from './jira.js';
 import { setupRoutes } from './routes/index.js';
 
+dotenv.config();
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const DB_FILE = path.join(__dirname, "users.db");
-const JIRA_BASE_URL = "https://collaboration.msi.audi.com/jira";
+const JIRA_BASE_URL = process.env.JIRA_BASE_URL; // <-- Use variable
+const JIRA_API_TOKEN = process.env.JIRA_API_TOKEN; // <-- Use variable
 
 const startServer = async () => {
     try {
-        const configPath = path.join(__dirname, 'config.json');
-        const configFile = await fs.readFile(configPath);
-        const { JIRA_API_TOKEN } = JSON.parse(configFile);
-
-        if (!JIRA_API_TOKEN || JIRA_API_TOKEN === "YOUR_JIRA_API_TOKEN_HERE") {
-            throw new Error("JIRA_API_TOKEN is not set in config.json");
+        if (!JIRA_API_TOKEN) {
+            throw new Error("JIRA_API_TOKEN is not set in the .env file");
+        }
+        if (!JIRA_BASE_URL) {
+            throw new Error("JIRA_BASE_URL is not set in the .env file");
         }
         console.log(`✅ JIRA_API_TOKEN loaded successfully. Snippet: ...${JIRA_API_TOKEN.slice(-4)}`);
 
