@@ -42,7 +42,7 @@ export const AnalyticsView = ({ log }) => {
             }
         };
         fetchData();
-    }, [log]);
+    }, []);
 
     const options = {
         indexAxis: 'y',

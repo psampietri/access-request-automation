@@ -1,3 +1,5 @@
+// src/App.jsx
+
 import React from 'react';
 import { useAppData } from './hooks/useAppData';
 import { HistoryView } from './components/HistoryView';
@@ -7,29 +9,23 @@ import { ExecuteTemplateView } from './components/ExecuteTemplateView';
 import { UserManagementView } from './components/UserManagementView';
 import { OnboardingView } from './components/OnboardingView';
 import { LogEntry } from './components/LogEntry';
-import { SendIcon, FileTextIcon, UsersIcon, HistoryIcon, BarChartIcon, ClipboardListIcon, SettingsIcon } from './components/Icons'; // Assuming you add a SettingsIcon
+import { SendIcon, FileTextIcon, UsersIcon, HistoryIcon, BarChartIcon, ClipboardListIcon, SettingsIcon } from './components/Icons';
 
-export default function App() {
-    const [activeView, setActiveView] = React.useState('onboarding');
+// 1. Define TabButton outside the main component for stability
+const TabButton = ({ viewName, icon, children, isActive, onClick }) => (
+    <button
+        onClick={onClick}
+        className={`flex items-center px-4 py-2 text-sm font-medium rounded-md transition-colors ${isActive ? 'bg-blue-600 text-white' : 'text-slate-300 hover:bg-slate-700'}`}
+    >
+        {icon}{children}
+    </button>
+);
+
+// 2. Define ManagementView outside the main component
+const ManagementView = ({ log, users, templates, userFields, history, jiraBaseUrl, fetchTemplates, fetchUsers, fetchUserFields, fetchHistory }) => {
     const [activeManagementView, setActiveManagementView] = React.useState('execute');
-    const [logs, setLogs] = React.useState([]);
-    
-    const log = React.useCallback((type, message) => {
-        setLogs(prev => [{ type, message, id: Date.now() + Math.random() }, ...prev.slice(0, 100)]);
-    }, []);
 
-    const { users, userFields, templates, history, jiraBaseUrl, onboardingTemplates, onboardingInstances, fetchUsers, fetchUserFields, fetchTemplates, fetchHistory, fetchOnboardingTemplates, fetchOnboardingInstances } = useAppData(log);
-
-    const TabButton = ({ viewName, icon, children, isActive, onClick }) => (
-        <button
-            onClick={onClick}
-            className={`flex items-center px-4 py-2 text-sm font-medium rounded-md transition-colors ${isActive ? 'bg-blue-600 text-white' : 'text-slate-300 hover:bg-slate-700'}`}
-        >
-            {icon}{children}
-        </button>
-    );
-
-    const ManagementView = () => (
+    return (
         <div className="bg-slate-800/50 p-6 rounded-lg border border-slate-700">
              <div className="flex justify-center mb-6">
                 <div className="flex flex-wrap space-x-2 p-1 bg-slate-800 rounded-lg">
@@ -47,13 +43,25 @@ export default function App() {
             {activeManagementView === 'analytics' && <AnalyticsView log={log} />}
         </div>
     );
+};
+
+
+export default function App() {
+    const [activeView, setActiveView] = React.useState('onboarding');
+    const [logs, setLogs] = React.useState([]);
+    
+    const log = React.useCallback((type, message) => {
+        setLogs(prev => [{ type, message, id: Date.now() + Math.random() }, ...prev.slice(0, 100)]);
+    }, []);
+
+    const appData = useAppData(log);
 
     return (
         <div className="bg-slate-900 text-slate-200 min-h-screen font-sans p-4 sm:p-6 lg:p-8">
             <div className="max-w-7xl mx-auto">
                 <header className="text-center mb-6">
                     <h1 className="text-4xl font-bold text-white">Access Request Automation Tool</h1>
-                    <p className="text-slate-400 mt-2">Create, track, and analyze your access requests and onboarding.</p>
+                    <p className="text-slate-400 mt-2">Create, track, and analyze your Jira Service Desk requests.</p>
                 </header>
 
                 <div className="flex justify-center mb-6">
@@ -64,16 +72,8 @@ export default function App() {
                 </div>
 
                 <div className="mb-6">
-                    {activeView === 'onboarding' && <OnboardingView
-                        log={log}
-                        users={users}
-                        templates={templates}
-                        onboardingTemplates={onboardingTemplates}
-                        onboardingInstances={onboardingInstances}
-                        fetchOnboardingTemplates={fetchOnboardingTemplates}
-                        fetchOnboardingInstances={fetchOnboardingInstances}
-                    />}
-                    {activeView === 'management' && <ManagementView />}
+                    {activeView === 'onboarding' && <OnboardingView {...appData} log={log} />}
+                    {activeView === 'management' && <ManagementView {...appData} log={log} />}
                 </div>
 
                 <div className="w-full bg-slate-800/50 p-2 rounded-lg border border-slate-700 h-40 flex flex-col">

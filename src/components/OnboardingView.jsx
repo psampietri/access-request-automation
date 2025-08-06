@@ -1,6 +1,7 @@
 import React from 'react';
 import { PROXY_ENDPOINT } from '../constants';
 import { TrashIcon, EditIcon, XIcon, SendIcon, EyeIcon, LinkIcon } from './Icons';
+import { SparklineProgress } from './SparklineProgress';
 
 export const OnboardingView = ({ log, users, templates, onboardingTemplates, onboardingInstances, fetchOnboardingTemplates, fetchOnboardingInstances }) => {
     const [isTemplateModalOpen, setIsTemplateModalOpen] = React.useState(false);
@@ -15,6 +16,13 @@ export const OnboardingView = ({ log, users, templates, onboardingTemplates, onb
     const [selectedInstance, setSelectedInstance] = React.useState(null);
     const [associationInfo, setAssociationInfo] = React.useState({ instanceId: null, templateId: null });
     const [issueKey, setIssueKey] = React.useState('');
+
+    const userMap = React.useMemo(() => {
+        return users.reduce((acc, user) => {
+            acc[user['E-mail']] = `${user.Name} ${user.Surname}`;
+            return acc;
+        }, {});
+    }, [users]);
 
     React.useEffect(() => {
         // If the detail modal is open, find the latest version of the selected instance
@@ -183,27 +191,43 @@ export const OnboardingView = ({ log, users, templates, onboardingTemplates, onb
                                 <th scope="col" className="p-3">User</th>
                                 <th scope="col" className="p-3">Onboarding Template</th>
                                 <th scope="col" className="p-3">Status</th>
+                                <th scope="col" className="p-3">Progress</th>
                                 <th scope="col" className="p-3">Actions</th>
                             </tr>
                         </thead>
                         <tbody>
-                            {onboardingInstances.map(inst => (
-                                <tr key={inst.id} className="bg-slate-800 border-b border-slate-700">
-                                    <td className="p-3">{inst.user_email}</td>
-                                    <td className="p-3">{inst.onboarding_template_name}</td>
-                                    <td className="p-3">
-                                        {inst.statuses.filter(s => s.status !== 'Not Started').length} / {inst.statuses.length} completed
-                                    </td>
-                                    <td className="p-3 flex space-x-2">
-                                        <button onClick={() => openInstanceDetailModal(inst)} className="text-blue-400 hover:text-blue-300">
-                                            <EyeIcon c="w-4 h-4" />
-                                        </button>
-                                        <button onClick={() => handleDeleteInstance(inst.id)} className="text-red-400 hover:text-red-300">
-                                            <TrashIcon c="w-4 h-4" />
-                                        </button>
-                                    </td>
-                                </tr>
-                            ))}
+                            {onboardingInstances.map(inst => {
+                                const closedTasks = inst.statuses.filter(s => s.status.toLowerCase() === 'closed' || s.status.toLowerCase() === 'done').length;
+                                const inProgressTasks = inst.statuses.filter(s => s.status.toLowerCase() !== 'not started' && s.status.toLowerCase() !== 'closed' && s.status.toLowerCase() !== 'done').length;
+                                const totalTasks = inst.statuses.length;
+                                const completedTasks = closedTasks + inProgressTasks;
+                                return (
+                                    <tr key={inst.id} className="bg-slate-800 border-b border-slate-700">
+                                        <td className="p-3" title={inst.user_email}>
+                                            {userMap[inst.user_email] || inst.user_email}
+                                        </td>
+                                        <td className="p-3">{inst.onboarding_template_name}</td>
+                                        <td className="p-3">
+                                            {completedTasks} / {totalTasks} tasks started
+                                        </td>
+                                        <td className="p-3">
+                                            <SparklineProgress 
+                                                closed={closedTasks} 
+                                                inProgress={inProgressTasks} 
+                                                total={totalTasks} 
+                                            />
+                                        </td>
+                                        <td className="p-3 flex space-x-2">
+                                            <button onClick={() => openInstanceDetailModal(inst)} className="text-blue-400 hover:text-blue-300">
+                                                <EyeIcon c="w-4 h-4" />
+                                            </button>
+                                            <button onClick={() => handleDeleteInstance(inst.id)} className="text-red-400 hover:text-red-300">
+                                                <TrashIcon c="w-4 h-4" />
+                                            </button>
+                                        </td>
+                                    </tr>
+                                );
+                            })}
                         </tbody>
                     </table>
                 </div>
