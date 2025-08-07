@@ -3,25 +3,40 @@ import { getJiraIssueDetails } from '../jira.js';
 export const requestsRoutes = (app, db, JIRA_BASE_URL) => {
     app.get('/requests', async (req, res) => {
         try {
-            const ticketsToSync = await db.all("SELECT issue_key FROM requests WHERE closed_at IS NULL AND status != 'Deleted in Jira'");
-            for (const row of ticketsToSync) {
+            // ** START OF FIX **
+            // Get unique issue keys from both requests and onboarding statuses
+            const requestTickets = await db.all("SELECT issue_key FROM requests WHERE closed_at IS NULL AND status != 'Deleted in Jira'");
+            const onboardingTickets = await db.all("SELECT issue_key FROM onboarding_instance_statuses WHERE issue_key IS NOT NULL");
+            const allTicketKeys = [...new Set([...requestTickets, ...onboardingTickets].map(t => t.issue_key))];
+
+            for (const issueKey of allTicketKeys) {
                 try {
-                    const issueData = await getJiraIssueDetails(row.issue_key);
+                    const issueData = await getJiraIssueDetails(issueKey);
                     const status = issueData.currentStatus.status;
-                    if (issueData.currentStatus.statusCategory === 'DONE') {
-                        const closedAt = issueData.currentStatus.statusDate.iso8601;
-                        await db.run("UPDATE requests SET status = ?, closed_at = ? WHERE issue_key = ?", [status, closedAt, row.issue_key]);
+                    const isDone = issueData.currentStatus.statusCategory === 'DONE';
+                    const closedAt = isDone ? issueData.currentStatus.statusDate.iso8601 : null;
+
+                    // Update the main requests table
+                    if (isDone) {
+                        await db.run("UPDATE requests SET status = ?, closed_at = ? WHERE issue_key = ?", [status, closedAt, issueKey]);
                     } else {
-                        await db.run("UPDATE requests SET status = ? WHERE issue_key = ?", [status, row.issue_key]);
+                        // Ensure closed_at is null if the ticket is re-opened
+                        await db.run("UPDATE requests SET status = ?, closed_at = NULL WHERE issue_key = ?", [status, issueKey]);
                     }
+
+                    // Update the onboarding statuses table as well
+                    await db.run("UPDATE onboarding_instance_statuses SET status = ? WHERE issue_key = ?", [status, issueKey]);
+
                 } catch (e) {
                     if (e.status === 404) {
-                        await db.run("UPDATE requests SET status = 'Deleted in Jira' WHERE issue_key = ?", [row.issue_key]);
+                        await db.run("UPDATE requests SET status = 'Deleted in Jira' WHERE issue_key = ?", [issueKey]);
+                        await db.run("UPDATE onboarding_instance_statuses SET status = 'Deleted in Jira' WHERE issue_key = ?", [issueKey]);
                     } else {
-                        console.error(`SYNC_ERROR for ${row.issue_key}:`, e);
+                        console.error(`SYNC_ERROR for ${issueKey}:`, e);
                     }
                 }
             }
+            // ** END OF FIX **
         } catch (e) {
             console.error("SYNC_ERROR:", e);
         }

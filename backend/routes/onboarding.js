@@ -1,6 +1,9 @@
 import { callJiraApi } from '../jira.js';
 import { formatJiraPayload } from '../utils.js';
 
+// Define a clear, centralized list of what is considered a "complete" status.
+const COMPLETED_STATUSES = ['completed', 'closed', 'done', 'resolved', 'finished'];
+
 export const onboardingRoutes = (app, db) => {
     app.get('/onboarding/templates', async (req, res) => {
         const onboardingTemplates = await db.all('SELECT * FROM onboarding_templates');
@@ -73,9 +76,7 @@ export const onboardingRoutes = (app, db) => {
                 await db.run('INSERT INTO onboarding_template_access_templates (onboarding_template_id, template_id) VALUES (?, ?)', [id, templateId]);
             }
 
-            // --- THIS IS THE CRITICAL FIX ---
             for (const instance of instances) {
-                // Remove old tasks
                 if (templatesToRemove.length > 0) {
                     const removePlaceholders = '?,'.repeat(templatesToRemove.length).slice(0, -1);
                     await db.run(
@@ -84,7 +85,6 @@ export const onboardingRoutes = (app, db) => {
                     );
                 }
 
-                // Add new tasks
                 const currentInstanceStatuses = await db.all('SELECT template_id FROM onboarding_instance_statuses WHERE onboarding_instance_id = ?', [instance.id]);
                 const currentInstanceTemplateIds = currentInstanceStatuses.map(s => s.template_id);
                 const templatesToAdd = newTemplateIds.filter(tid => !currentInstanceTemplateIds.includes(tid));
@@ -95,7 +95,6 @@ export const onboardingRoutes = (app, db) => {
                     );
                 }
             }
-            // --- END OF FIX ---
             
             await db.run('COMMIT');
             res.json({ success: true });
@@ -148,8 +147,11 @@ export const onboardingRoutes = (app, db) => {
                 if (myDependencies.length > 0 && !s.is_bypassed) {
                     for (const depId of myDependencies) {
                         const prerequisiteTask = statuses.find(st => st.template_id === depId);
-                        const isPrerequisiteComplete = prerequisiteTask && ['completed', 'closed', 'done'].includes(prerequisiteTask.status.toLowerCase());
                         
+                        // --- THIS IS THE FIX ---
+                        const isPrerequisiteComplete = prerequisiteTask && COMPLETED_STATUSES.includes(prerequisiteTask.status.toLowerCase().trim());
+                        // --- END OF FIX ---
+
                         if (!isPrerequisiteComplete) {
                             isLocked = true;
                             break;

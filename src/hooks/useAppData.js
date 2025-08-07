@@ -26,16 +26,6 @@ export const useAppData = (log) => {
         if (data) setTemplates(data);
     }, [log]);
 
-    const fetchHistory = React.useCallback(async () => {
-        log('info', 'Syncing request history...');
-        const data = await safeFetch(`${PROXY_ENDPOINT}/requests`, log, 'Could not fetch history');
-        if (data) {
-            setHistory(data.requests);
-            setJiraBaseUrl(data.jira_base_url);
-            log('success', 'History synced.');
-        }
-    }, [log]);
-
     const fetchOnboardingTemplates = React.useCallback(async () => {
         const data = await safeFetch(`${PROXY_ENDPOINT}/onboarding/templates`, log, 'Could not load onboarding templates');
         if (data) setOnboardingTemplates(data);
@@ -45,6 +35,19 @@ export const useAppData = (log) => {
         const data = await safeFetch(`${PROXY_ENDPOINT}/onboarding/instances`, log, 'Could not load onboarding instances');
         if (data) setOnboardingInstances(data);
     }, [log]);
+
+    const fetchHistory = React.useCallback(async () => {
+        log('info', 'Syncing request history...');
+        const data = await safeFetch(`${PROXY_ENDPOINT}/requests`, log, 'Could not fetch history');
+        if (data) {
+            setHistory(data.requests);
+            setJiraBaseUrl(data.jira_base_url);
+            log('success', 'History synced.');
+            // Also refresh onboarding instances when history is synced
+            fetchOnboardingInstances();
+        }
+    }, [log, fetchOnboardingInstances]);
+
 
     React.useEffect(() => {
         fetchUsers();

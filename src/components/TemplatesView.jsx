@@ -3,7 +3,7 @@ import { PROXY_ENDPOINT } from '../constants';
 import { TrashIcon, EditIcon, XIcon, FilePlusIcon } from './Icons';
 import { safeFetch } from '../utils/fetch';
 
-export const TemplatesView = ({ log, templates, fetchTemplates, userFields }) => {
+export const TemplatesView = ({ log, templates, fetchTemplates, userFields, fetchOnboardingInstances }) => {
     const [editingTemplate, setEditingTemplate] = React.useState(null);
     const [serviceDesks, setServiceDesks] = React.useState([]);
     const [requestTypes, setRequestTypes] = React.useState([]);
@@ -127,6 +127,7 @@ export const TemplatesView = ({ log, templates, fetchTemplates, userFields }) =>
             if (!res.ok) throw new Error(data.error);
             log('success', `Template ${editingTemplate ? 'updated' : 'saved'}!`);
             fetchTemplates();
+            fetchOnboardingInstances(); // THIS IS THE CRITICAL FIX
             cancelEditing();
         } catch (error) {
             log('error', `Could not save template: ${error.message}`);

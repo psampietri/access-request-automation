@@ -2,9 +2,10 @@ import React from 'react';
 import { PROXY_ENDPOINT } from '../constants';
 import { 
     TrashIcon, EditIcon, XIcon, SendIcon, EyeIcon, LinkIcon, 
-    CheckCircleIcon, RefreshCwIcon, LinkOffIcon, LockIcon, UnlockIcon 
+    CheckCircleIcon, RefreshCwIcon, LinkOffIcon, LockIcon, UnlockIcon, InfoIcon
 } from './Icons';
 import { SparklineProgress } from './SparklineProgress';
+import { structureTasksForDisplay } from '../utils/dependencyTree'; // Import the new utility
 
 export const OnboardingView = ({ log, users, templates, onboardingTemplates, onboardingInstances, fetchOnboardingTemplates, fetchOnboardingInstances }) => {
     const [isTemplateModalOpen, setIsTemplateModalOpen] = React.useState(false);
@@ -28,6 +29,8 @@ export const OnboardingView = ({ log, users, templates, onboardingTemplates, onb
     const [manualStatus, setManualStatus] = React.useState('');
     const [newStatus, setNewStatus] = React.useState('');
 
+    const [structuredStatuses, setStructuredStatuses] = React.useState([]);
+
     const userMap = React.useMemo(() => {
         return users.reduce((acc, user) => {
             acc[user['E-mail']] = `${user.Name} ${user.Surname}`;
@@ -39,10 +42,12 @@ export const OnboardingView = ({ log, users, templates, onboardingTemplates, onb
         if (isInstanceDetailModalOpen && selectedInstance) {
             const updatedInstance = onboardingInstances.find(inst => inst.id === selectedInstance.id);
             if (updatedInstance) {
+                const structured = structureTasksForDisplay(updatedInstance.statuses);
+                setStructuredStatuses(structured);
                 setSelectedInstance(updatedInstance);
             }
         }
-    }, [onboardingInstances, isInstanceDetailModalOpen, selectedInstance]);
+    }, [onboardingInstances, templates, isInstanceDetailModalOpen, selectedInstance]);
 
     const handleSaveTemplate = async (e) => {
         e.preventDefault();
@@ -265,11 +270,12 @@ export const OnboardingView = ({ log, users, templates, onboardingTemplates, onb
         setEditingTemplate(template);
         setTemplateName(template ? template.name : '');
         setSelectedTemplateIds(template ? new Set(template.template_ids) : new Set());
-        // --- THIS LINE IS NOW REMOVED ---
         setIsTemplateModalOpen(true);
     };
 
     const openInstanceDetailModal = (instance) => {
+        const structured = structureTasksForDisplay(instance.statuses);
+        setStructuredStatuses(structured);
         setSelectedInstance(instance);
         setIsInstanceDetailModalOpen(true);
     };
@@ -450,7 +456,7 @@ export const OnboardingView = ({ log, users, templates, onboardingTemplates, onb
 
             {isInstanceDetailModalOpen && (
                 <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
-                    <div className="bg-slate-800 rounded-lg shadow-xl w-full max-w-2xl">
+                    <div className="bg-slate-800 rounded-lg shadow-xl w-full max-w-3xl">
                         <header className="flex justify-between items-center p-4 border-b border-slate-700">
                             <h2 className="text-xl font-bold">Onboarding Details for {userMap[selectedInstance?.user_email] || selectedInstance?.user_email}</h2>
                             <button onClick={() => setIsInstanceDetailModalOpen(false)}><XIcon c="w-6 h-6" /></button>
@@ -467,23 +473,17 @@ export const OnboardingView = ({ log, users, templates, onboardingTemplates, onb
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {selectedInstance?.statuses.map(s => {
+                                        {structuredStatuses.map(s => {
                                             const templateDetails = templates.find(t => t.template_id === s.template_id);
                                             const isManual = templateDetails ? templateDetails.is_manual : false;
                                             
                                             return (
-                                                <tr key={s.template_id} className={`bg-slate-800 border-b border-slate-700 ${s.isLocked ? 'opacity-60' : ''}`}>
-                                                    <td className="p-3">
-                                                        <div className="flex items-center">
+                                                <tr key={s.uniqueRenderKey} className={`bg-slate-800 border-b border-slate-700 ${s.isLocked ? 'opacity-60' : ''}`}>
+                                                    <td className="p-3" style={{ paddingLeft: `${s.level * 24 + 12}px` }}>
+                                                        <div className="flex items-center" title={s.dependencies.length > 0 ? `Depends on: ${s.dependencies.map(depId => templates.find(t => t.template_id === depId)?.template_name).join(', ')}` : ''}>
                                                             {s.isLocked && <LockIcon c="w-4 h-4 mr-2 text-yellow-400"/>}
-                                                            <div>
-                                                                <span className="font-semibold text-white">{s.template_name}</span>
-                                                                {s.dependencies && s.dependencies.length > 0 && (
-                                                                    <div className="text-xs text-slate-400 mt-1">
-                                                                        Depends on: {s.dependencies.map(depId => templates.find(t => t.template_id === depId)?.template_name).join(', ')}
-                                                                    </div>
-                                                                )}
-                                                            </div>
+                                                            <span className="font-semibold text-white">{s.template_name}</span>
+                                                            {s.dependencies.length > 0 && <InfoIcon c="w-4 h-4 ml-2 text-slate-500" />}
                                                         </div>
                                                     </td>
                                                     <td className="p-3">{s.status}</td>

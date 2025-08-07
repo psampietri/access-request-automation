@@ -1,5 +1,3 @@
-// src/App.jsx
-
 import React from 'react';
 import { useAppData } from './hooks/useAppData';
 import { HistoryView } from './components/HistoryView';
@@ -11,7 +9,6 @@ import { OnboardingView } from './components/OnboardingView';
 import { LogEntry } from './components/LogEntry';
 import { SendIcon, FileTextIcon, UsersIcon, HistoryIcon, BarChartIcon, ClipboardListIcon, SettingsIcon } from './components/Icons';
 
-// 1. Define TabButton outside the main component for stability
 const TabButton = ({ viewName, icon, children, isActive, onClick }) => (
     <button
         onClick={onClick}
@@ -21,9 +18,8 @@ const TabButton = ({ viewName, icon, children, isActive, onClick }) => (
     </button>
 );
 
-// 2. Define ManagementView outside the main component
-const ManagementView = ({ log, users, templates, userFields, history, jiraBaseUrl, fetchTemplates, fetchUsers, fetchUserFields, fetchHistory }) => {
-    const [activeManagementView, setActiveManagementView] = React.useState('execute');
+const ManagementView = ({ log, users, templates, userFields, history, jiraBaseUrl, fetchTemplates, fetchUsers, fetchUserFields, fetchHistory, fetchOnboardingInstances }) => {
+    const [activeManagementView, setActiveManagementView] = React.useState('templates');
 
     return (
         <div className="bg-slate-800/50 p-6 rounded-lg border border-slate-700">
@@ -37,14 +33,13 @@ const ManagementView = ({ log, users, templates, userFields, history, jiraBaseUr
                 </div>
             </div>
             {activeManagementView === 'execute' && <ExecuteTemplateView log={log} users={users} templates={templates} />}
-            {activeManagementView === 'templates' && <TemplatesView log={log} templates={templates} fetchTemplates={fetchTemplates} userFields={userFields} />}
+            {activeManagementView === 'templates' && <TemplatesView log={log} templates={templates} fetchTemplates={fetchTemplates} userFields={userFields} fetchOnboardingInstances={fetchOnboardingInstances} />}
             {activeManagementView === 'users' && <UserManagementView log={log} users={users} userFields={userFields} fetchUsers={fetchUsers} fetchUserFields={fetchUserFields} />}
             {activeManagementView === 'history' && <HistoryView log={log} history={history} jiraBaseUrl={jiraBaseUrl} fetchHistory={fetchHistory} users={users} />}
             {activeManagementView === 'analytics' && <AnalyticsView log={log} />}
         </div>
     );
 };
-
 
 export default function App() {
     const [activeView, setActiveView] = React.useState('onboarding');

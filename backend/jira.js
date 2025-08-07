@@ -15,7 +15,15 @@ export const callJiraApi = async (endpoint, method = 'GET', payload = null) => {
         'Content-Type': 'application/json'
     };
     try {
-        const options = { method, headers };
+        // --- START OF FIX ---
+        // Added a 30-second timeout to the request
+        const options = {
+            method,
+            headers,
+            timeout: 30000 // 30 seconds
+        };
+        // --- END OF FIX ---
+
         if (payload) {
             options.body = JSON.stringify(payload);
         }
