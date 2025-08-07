@@ -3,7 +3,7 @@ import { PROXY_ENDPOINT } from '../constants';
 import { TrashIcon, EditIcon, XIcon, FilePlusIcon } from './Icons';
 import { safeFetch } from '../utils/fetch';
 
-export const TemplatesView = ({ log, templates, fetchTemplates, userFields, fetchOnboardingInstances }) => {
+export const TemplatesView = ({ log, templates, fetchTemplates, userFields }) => {
     const [editingTemplate, setEditingTemplate] = React.useState(null);
     const [serviceDesks, setServiceDesks] = React.useState([]);
     const [requestTypes, setRequestTypes] = React.useState([]);
@@ -13,9 +13,10 @@ export const TemplatesView = ({ log, templates, fetchTemplates, userFields, fetc
     const [templateName, setTemplateName] = React.useState('');
     const [fieldMappings, setFieldMappings] = React.useState({});
     const [dependencies, setDependencies] = React.useState([]);
-    
+
     const [isManualModalOpen, setIsManualModalOpen] = React.useState(false);
     const [manualTemplateName, setManualTemplateName] = React.useState('');
+    const [manualInstructions, setManualInstructions] = React.useState('');
     const [isSubmittingManual, setIsSubmittingManual] = React.useState(false);
 
     React.useEffect(() => {
@@ -62,7 +63,7 @@ export const TemplatesView = ({ log, templates, fetchTemplates, userFields, fetc
             fetch();
         }
     }, [selectedRequestType.id, selectedServiceDesk.id, log, userFields, editingTemplate]);
-    
+
     React.useEffect(() => {
         if (!isSubmittingManual) return;
         const save = async () => {
@@ -75,7 +76,11 @@ export const TemplatesView = ({ log, templates, fetchTemplates, userFields, fetc
                 const res = await fetch(`${PROXY_ENDPOINT}/templates`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ template_name: manualTemplateName, is_manual: true })
+                    body: JSON.stringify({
+                        template_name: manualTemplateName,
+                        instructions: manualInstructions,
+                        is_manual: true
+                    })
                 });
                 const data = await res.json();
                 if (!res.ok) throw new Error(data.error || `Server responded with ${res.status}`);
@@ -83,6 +88,7 @@ export const TemplatesView = ({ log, templates, fetchTemplates, userFields, fetc
                 fetchTemplates();
                 setIsManualModalOpen(false);
                 setManualTemplateName('');
+                setManualInstructions('');
             } catch (error) {
                 log('error', `Could not save manual template: ${error.message}`);
             } finally {
@@ -90,7 +96,7 @@ export const TemplatesView = ({ log, templates, fetchTemplates, userFields, fetc
             }
         };
         save();
-    }, [isSubmittingManual, manualTemplateName, fetchTemplates, log]);
+    }, [isSubmittingManual, manualTemplateName, manualInstructions, fetchTemplates, log]);
 
     const handleMappingChange = (fieldId, type, value) => {
         const field = fields.find(f => f.fieldId === fieldId);
@@ -107,33 +113,34 @@ export const TemplatesView = ({ log, templates, fetchTemplates, userFields, fetc
              log('error', 'Please select a request type for Jira templates.');
             return;
         }
-        
-        const payload = {
-            template_name: templateName,
-            service_desk_id: selectedServiceDesk.id,
-            request_type_id: selectedRequestType.id,
-            service_desk_name: selectedServiceDesk.name,
-            request_type_name: selectedRequestType.name,
-            field_mappings: fieldMappings,
-            dependencies: dependencies
-        };
+
+        const payload = editingTemplate?.is_manual
+            ? { template_name: templateName, instructions: manualInstructions, dependencies }
+            : {
+                template_name: templateName,
+                service_desk_id: selectedServiceDesk.id,
+                request_type_id: selectedRequestType.id,
+                service_desk_name: selectedServiceDesk.name,
+                request_type_name: selectedRequestType.name,
+                field_mappings: fieldMappings,
+                dependencies: dependencies
+            };
 
         const url = editingTemplate ? `${PROXY_ENDPOINT}/templates/${editingTemplate.template_id}` : `${PROXY_ENDPOINT}/templates`;
         const method = editingTemplate ? 'PUT' : 'POST';
-        
+
         try {
             const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
             const data = await res.json();
             if (!res.ok) throw new Error(data.error);
             log('success', `Template ${editingTemplate ? 'updated' : 'saved'}!`);
             fetchTemplates();
-            fetchOnboardingInstances(); // THIS IS THE CRITICAL FIX
             cancelEditing();
         } catch (error) {
             log('error', `Could not save template: ${error.message}`);
         }
     };
-    
+
     const handleSaveManualTemplate = (e) => {
         e.preventDefault();
         setIsSubmittingManual(true);
@@ -155,9 +162,13 @@ export const TemplatesView = ({ log, templates, fetchTemplates, userFields, fetc
     const startEditing = (template) => {
         setEditingTemplate(template);
         setTemplateName(template.template_name);
-        setSelectedServiceDesk({ id: template.service_desk_id, name: template.service_desk_name });
-        setSelectedRequestType({ id: template.request_type_id, name: template.request_type_name });
-        setFieldMappings(template.field_mappings ? JSON.parse(template.field_mappings) : {});
+        if (template.is_manual) {
+            setManualInstructions(template.instructions || '');
+        } else {
+            setSelectedServiceDesk({ id: template.service_desk_id, name: template.service_desk_name });
+            setSelectedRequestType({ id: template.request_type_id, name: template.request_type_name });
+            setFieldMappings(template.field_mappings ? JSON.parse(template.field_mappings) : {});
+        }
         setDependencies(template.dependencies || []);
     };
 
@@ -169,6 +180,7 @@ export const TemplatesView = ({ log, templates, fetchTemplates, userFields, fetc
         setSelectedRequestType({ id: '', name: '' });
         setSelectedServiceDesk({ id: '', name: '' });
         setDependencies([]);
+        setManualInstructions('');
     };
 
     return (
@@ -186,7 +198,14 @@ export const TemplatesView = ({ log, templates, fetchTemplates, userFields, fetc
                     <form className="space-y-4" onSubmit={handleSaveTemplate}>
                         <input type="text" value={templateName} onChange={e => setTemplateName(e.target.value)} placeholder="Enter Template Name" className="w-full bg-slate-700 p-2 text-sm rounded mt-2" required />
 
-                        {(!editingTemplate || !editingTemplate.is_manual) && (
+                        {editingTemplate?.is_manual ? (
+                            <textarea
+                                value={manualInstructions}
+                                onChange={e => setManualInstructions(e.target.value)}
+                                placeholder="Instructions for this manual task..."
+                                className="w-full bg-slate-700 p-2 text-sm rounded h-24"
+                            />
+                        ) : (
                             <>
                                 <div className="grid md:grid-cols-2 gap-4">
                                     <div>
@@ -246,7 +265,7 @@ export const TemplatesView = ({ log, templates, fetchTemplates, userFields, fetc
                                 )}
                             </>
                         )}
-                        
+
                         {editingTemplate && (
                              <div className="pt-4 border-t border-slate-700">
                                 <h3 className="text-lg font-semibold mb-2">Dependencies</h3>
@@ -310,8 +329,14 @@ export const TemplatesView = ({ log, templates, fetchTemplates, userFields, fetc
                                 className="w-full bg-slate-700 p-2 text-sm rounded"
                                 required
                             />
-                            <button 
-                                type="submit" 
+                            <textarea
+                                placeholder="Instructions (optional)"
+                                value={manualInstructions}
+                                onChange={e => setManualInstructions(e.target.value)}
+                                className="w-full bg-slate-700 p-2 text-sm rounded h-24"
+                            />
+                            <button
+                                type="submit"
                                 disabled={isSubmittingManual}
                                 className="w-full p-2 bg-purple-600 rounded-lg disabled:bg-slate-600"
                             >

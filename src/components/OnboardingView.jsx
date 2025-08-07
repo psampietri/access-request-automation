@@ -1,11 +1,10 @@
 import React from 'react';
 import { PROXY_ENDPOINT } from '../constants';
-import { 
-    TrashIcon, EditIcon, XIcon, SendIcon, EyeIcon, LinkIcon, 
-    CheckCircleIcon, RefreshCwIcon, LinkOffIcon, LockIcon, UnlockIcon, InfoIcon
+import {
+    TrashIcon, EditIcon, XIcon, SendIcon, EyeIcon, LinkIcon,
+    CheckCircleIcon, RefreshCwIcon, LinkOffIcon, LockIcon, UnlockIcon
 } from './Icons';
 import { SparklineProgress } from './SparklineProgress';
-import { structureTasksForDisplay } from '../utils/dependencyTree'; // Import the new utility
 
 export const OnboardingView = ({ log, users, templates, onboardingTemplates, onboardingInstances, fetchOnboardingTemplates, fetchOnboardingInstances }) => {
     const [isTemplateModalOpen, setIsTemplateModalOpen] = React.useState(false);
@@ -14,22 +13,20 @@ export const OnboardingView = ({ log, users, templates, onboardingTemplates, onb
     const [isAssociateModalOpen, setIsAssociateModalOpen] = React.useState(false);
     const [isManualAssociateModalOpen, setIsManualAssociateModalOpen] = React.useState(false);
     const [isUpdateStatusModalOpen, setIsUpdateStatusModalOpen] = React.useState(false);
-    
+
     const [editingTemplate, setEditingTemplate] = React.useState(null);
     const [templateName, setTemplateName] = React.useState('');
     const [selectedTemplateIds, setSelectedTemplateIds] = React.useState(new Set());
-    
+
     const [selectedUser, setSelectedUser] = React.useState('');
     const [selectedOnboardingTemplate, setSelectedOnboardingTemplate] = React.useState('');
     const [selectedInstance, setSelectedInstance] = React.useState(null);
-    
+
     const [associationInfo, setAssociationInfo] = React.useState({ instanceId: null, templateId: null, issueKey: null });
     const [issueKey, setIssueKey] = React.useState('');
     const [manualIssueKey, setManualIssueKey] = React.useState('');
     const [manualStatus, setManualStatus] = React.useState('');
     const [newStatus, setNewStatus] = React.useState('');
-
-    const [structuredStatuses, setStructuredStatuses] = React.useState([]);
 
     const userMap = React.useMemo(() => {
         return users.reduce((acc, user) => {
@@ -37,17 +34,15 @@ export const OnboardingView = ({ log, users, templates, onboardingTemplates, onb
             return acc;
         }, {});
     }, [users]);
-    
+
     React.useEffect(() => {
         if (isInstanceDetailModalOpen && selectedInstance) {
             const updatedInstance = onboardingInstances.find(inst => inst.id === selectedInstance.id);
             if (updatedInstance) {
-                const structured = structureTasksForDisplay(updatedInstance.statuses);
-                setStructuredStatuses(structured);
                 setSelectedInstance(updatedInstance);
             }
         }
-    }, [onboardingInstances, templates, isInstanceDetailModalOpen, selectedInstance]);
+    }, [onboardingInstances, isInstanceDetailModalOpen, selectedInstance]);
 
     const handleSaveTemplate = async (e) => {
         e.preventDefault();
@@ -80,7 +75,7 @@ export const OnboardingView = ({ log, users, templates, onboardingTemplates, onb
             log('error', `Failed to save onboarding template: ${error.message}`);
         }
     };
-    
+
     const handleDeleteTemplate = async (templateId) => {
         if (confirm('Are you sure you want to delete this onboarding template?')) {
             try {
@@ -274,8 +269,6 @@ export const OnboardingView = ({ log, users, templates, onboardingTemplates, onb
     };
 
     const openInstanceDetailModal = (instance) => {
-        const structured = structureTasksForDisplay(instance.statuses);
-        setStructuredStatuses(structured);
         setSelectedInstance(instance);
         setIsInstanceDetailModalOpen(true);
     };
@@ -334,10 +327,10 @@ export const OnboardingView = ({ log, users, templates, onboardingTemplates, onb
                                             {completedTasks} / {totalTasks} tasks started
                                         </td>
                                         <td className="p-3">
-                                            <SparklineProgress 
-                                                closed={closedTasks} 
-                                                inProgress={inProgressTasks} 
-                                                total={totalTasks} 
+                                            <SparklineProgress
+                                                closed={closedTasks}
+                                                inProgress={inProgressTasks}
+                                                total={totalTasks}
                                             />
                                         </td>
                                         <td className="p-3 flex space-x-2">
@@ -456,83 +449,94 @@ export const OnboardingView = ({ log, users, templates, onboardingTemplates, onb
 
             {isInstanceDetailModalOpen && (
                 <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
-                    <div className="bg-slate-800 rounded-lg shadow-xl w-full max-w-3xl">
+                    <div className="bg-slate-800 rounded-lg shadow-xl w-full max-w-4xl">
                         <header className="flex justify-between items-center p-4 border-b border-slate-700">
                             <h2 className="text-xl font-bold">Onboarding Details for {userMap[selectedInstance?.user_email] || selectedInstance?.user_email}</h2>
                             <button onClick={() => setIsInstanceDetailModalOpen(false)}><XIcon c="w-6 h-6" /></button>
                         </header>
                         <div className="p-4">
-                            <div className="max-h-96 overflow-y-auto">
+                            <div className="max-h-[70vh] overflow-y-auto">
                                 <table className="w-full text-sm text-left">
                                     <thead className="text-xs text-slate-300 uppercase bg-slate-700 sticky top-0">
                                         <tr>
                                             <th scope="col" className="p-3">Access Template</th>
                                             <th scope="col" className="p-3">Status</th>
                                             <th scope="col" className="p-3">Issue Key</th>
+                                            <th scope="col" className="p-3">Timestamps</th>
                                             <th scope="col" className="p-3">Actions</th>
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {structuredStatuses.map(s => {
-                                            const templateDetails = templates.find(t => t.template_id === s.template_id);
-                                            const isManual = templateDetails ? templateDetails.is_manual : false;
-                                            
-                                            return (
-                                                <tr key={s.uniqueRenderKey} className={`bg-slate-800 border-b border-slate-700 ${s.isLocked ? 'opacity-60' : ''}`}>
-                                                    <td className="p-3" style={{ paddingLeft: `${s.level * 24 + 12}px` }}>
-                                                        <div className="flex items-center" title={s.dependencies.length > 0 ? `Depends on: ${s.dependencies.map(depId => templates.find(t => t.template_id === depId)?.template_name).join(', ')}` : ''}>
-                                                            {s.isLocked && <LockIcon c="w-4 h-4 mr-2 text-yellow-400"/>}
+                                        {selectedInstance?.statuses.map(s => (
+                                            <tr key={s.template_id} className={`bg-slate-800 border-b border-slate-700 ${s.isLocked ? 'opacity-60' : ''}`}>
+                                                <td className="p-3 align-top">
+                                                    <div className="flex items-start">
+                                                        {s.isLocked && <LockIcon c="w-4 h-4 mr-2 text-yellow-400 flex-shrink-0 mt-1"/>}
+                                                        <div>
                                                             <span className="font-semibold text-white">{s.template_name}</span>
-                                                            {s.dependencies.length > 0 && <InfoIcon c="w-4 h-4 ml-2 text-slate-500" />}
+                                                            {s.dependencies && s.dependencies.length > 0 && (
+                                                                <div className="text-xs text-slate-400 mt-1">
+                                                                    Depends on: {s.dependencies.map(depId => templates.find(t => t.template_id === depId)?.template_name).join(', ')}
+                                                                </div>
+                                                            )}
+                                                            {s.is_manual === 1 && s.instructions && (
+                                                                <div className="mt-2 p-2 bg-slate-700/50 rounded-md">
+                                                                    <p className="text-xs text-slate-300 whitespace-pre-wrap">{s.instructions}</p>
+                                                                </div>
+                                                            )}
                                                         </div>
-                                                    </td>
-                                                    <td className="p-3">{s.status}</td>
-                                                    <td className="p-3">{s.issue_key || 'N/A'}</td>
-                                                    <td className="p-3">
-                                                        <div className="flex space-x-2">
-                                                            {s.isLocked ? (
-                                                                <button onClick={() => handleBypass(selectedInstance.id, s.template_id)} className="text-yellow-400 hover:text-yellow-300" title="Bypass Dependency">
-                                                                    <UnlockIcon c="w-4 h-4" />
-                                                                </button>
-                                                            ) : (
-                                                                (() => {
-                                                                    if (isManual) {
-                                                                        if (s.issue_key) {
-                                                                            return (
-                                                                                <>
-                                                                                    <button onClick={() => openUpdateStatusModal(selectedInstance.id, s.template_id, s.status)} className="text-cyan-400 hover:text-cyan-300" title="Update Status">
-                                                                                        <RefreshCwIcon c="w-4 h-4" />
-                                                                                    </button>
-                                                                                    <button onClick={() => handleUnassignTicket(selectedInstance.id, s.template_id, s.issue_key)} className="text-red-400 hover:text-red-300" title="Unassign Ticket">
-                                                                                        <LinkOffIcon c="w-4 h-4" />
-                                                                                    </button>
-                                                                                </>
-                                                                            );
-                                                                        }
-                                                                        if (s.status === 'Not Started') {
-                                                                            return (
-                                                                                <>
-                                                                                    <button onClick={() => handleMarkAsComplete(selectedInstance.id, s.template_id)} className="text-green-400 hover:text-green-300" title="Mark as Complete"><CheckCircleIcon c="w-4 h-4" /></button>
-                                                                                    <button onClick={() => openAssociateModal(selectedInstance.id, s.template_id, true)} className="text-gray-400 hover:text-gray-300" title="Associate Ticket"><LinkIcon c="w-4 h-4" /></button>
-                                                                                </>
-                                                                            );
-                                                                        }
-                                                                    } else if (s.status === 'Not Started') {
+                                                    </div>
+                                                </td>
+                                                <td className="p-3 align-top">{s.status}</td>
+                                                <td className="p-3 align-top">{s.issue_key || 'N/A'}</td>
+                                                <td className="p-3 align-top text-xs text-slate-400">
+                                                    {s.started_at && <div>Started: {new Date(s.started_at).toLocaleString()}</div>}
+                                                    {s.closed_at && <div>Closed: {new Date(s.closed_at).toLocaleString()}</div>}
+                                                </td>
+                                                <td className="p-3 align-top">
+                                                    <div className="flex space-x-2">
+                                                        {s.isLocked ? (
+                                                            <button onClick={() => handleBypass(selectedInstance.id, s.template_id)} className="text-yellow-400 hover:text-yellow-300" title="Bypass Dependency">
+                                                                <UnlockIcon c="w-4 h-4" />
+                                                            </button>
+                                                        ) : (
+                                                            (() => {
+                                                                if (s.is_manual === 1) {
+                                                                    if (s.issue_key) {
                                                                         return (
                                                                             <>
-                                                                                <button onClick={() => handleExecuteRequest(selectedInstance.id, s.template_id)} className="text-blue-400 hover:text-blue-300" title="Submit Request"><SendIcon c="w-4 h-4" /></button>
-                                                                                <button onClick={() => openAssociateModal(selectedInstance.id, s.template_id)} className="text-gray-400 hover:text-gray-300" title="Associate Ticket"><LinkIcon c="w-4 h-4" /></button>
+                                                                                <button onClick={() => openUpdateStatusModal(selectedInstance.id, s.template_id, s.status)} className="text-cyan-400 hover:text-cyan-300" title="Update Status">
+                                                                                    <RefreshCwIcon c="w-4 h-4" />
+                                                                                </button>
+                                                                                <button onClick={() => handleUnassignTicket(selectedInstance.id, s.template_id, s.issue_key)} className="text-red-400 hover:text-red-300" title="Unassign Ticket">
+                                                                                    <LinkOffIcon c="w-4 h-4" />
+                                                                                </button>
                                                                             </>
                                                                         );
                                                                     }
-                                                                    return null;
-                                                                })()
-                                                            )}
-                                                        </div>
-                                                    </td>
-                                                </tr>
-                                            );
-                                        })}
+                                                                    if (s.status === 'Not Started') {
+                                                                        return (
+                                                                            <>
+                                                                                <button onClick={() => handleMarkAsComplete(selectedInstance.id, s.template_id)} className="text-green-400 hover:text-green-300" title="Mark as Complete"><CheckCircleIcon c="w-4 h-4" /></button>
+                                                                                <button onClick={() => openAssociateModal(selectedInstance.id, s.template_id, true)} className="text-gray-400 hover:text-gray-300" title="Associate Ticket"><LinkIcon c="w-4 h-4" /></button>
+                                                                            </>
+                                                                        );
+                                                                    }
+                                                                } else if (s.status === 'Not Started') {
+                                                                    return (
+                                                                        <>
+                                                                            <button onClick={() => handleExecuteRequest(selectedInstance.id, s.template_id)} className="text-blue-400 hover:text-blue-300" title="Submit Request"><SendIcon c="w-4 h-4" /></button>
+                                                                            <button onClick={() => openAssociateModal(selectedInstance.id, s.template_id)} className="text-gray-400 hover:text-gray-300" title="Associate Ticket"><LinkIcon c="w-4 h-4" /></button>
+                                                                        </>
+                                                                    );
+                                                                }
+                                                                return null;
+                                                            })()
+                                                        )}
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        ))}
                                     </tbody>
                                 </table>
                             </div>
@@ -540,7 +544,7 @@ export const OnboardingView = ({ log, users, templates, onboardingTemplates, onb
                     </div>
                 </div>
             )}
-            
+
             {isAssociateModalOpen && (
                 <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
                     <div className="bg-slate-800 rounded-lg shadow-xl w-full max-w-md">
@@ -592,7 +596,7 @@ export const OnboardingView = ({ log, users, templates, onboardingTemplates, onb
                     </div>
                 </div>
             )}
-            
+
             {isUpdateStatusModalOpen && (
                 <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
                     <div className="bg-slate-800 rounded-lg shadow-xl w-full max-w-md">

@@ -18,8 +18,8 @@ export const templatesRoutes = (app, db) => {
         if (data.is_manual) {
             try {
                 await db.run(
-                    "INSERT INTO templates (template_name, is_manual) VALUES (?, 1)",
-                    [data.template_name]
+                    "INSERT INTO templates (template_name, is_manual, instructions) VALUES (?, 1, ?)",
+                    [data.template_name, data.instructions]
                 );
                 res.status(201).json({ success: true });
             } catch (e) {
@@ -49,17 +49,17 @@ export const templatesRoutes = (app, db) => {
     app.put('/templates/:template_id', async (req, res) => {
         const { template_id } = req.params;
         const data = req.body;
-        
+
         try {
             await db.run('BEGIN TRANSACTION');
-            
+
             // Check if the template is manual to decide which fields to update
             const template = await db.get('SELECT is_manual FROM templates WHERE template_id = ?', [template_id]);
 
             if (template.is_manual) {
                 await db.run(
-                    "UPDATE templates SET template_name = ? WHERE template_id = ?",
-                    [data.template_name, template_id]
+                    "UPDATE templates SET template_name = ?, instructions = ? WHERE template_id = ?",
+                    [data.template_name, data.instructions, template_id]
                 );
             } else {
                 await db.run(
@@ -75,7 +75,7 @@ export const templatesRoutes = (app, db) => {
                     await db.run('INSERT INTO template_dependencies (template_id, depends_on_template_id) VALUES (?, ?)', [template_id, depId]);
                 }
             }
-            
+
             await db.run('COMMIT');
             res.json({ success: true });
         } catch (e) {
