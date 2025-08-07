@@ -37,9 +37,9 @@ export const structureTasksForDisplay = (tasks) => {
         // --- END OF FIX ---
 
         // Add the task to the list with its level and a unique key for rendering
-        displayList.push({ 
-            ...task, 
-            level, 
+        displayList.push({
+            ...task,
+            level,
             uniqueRenderKey
         });
         

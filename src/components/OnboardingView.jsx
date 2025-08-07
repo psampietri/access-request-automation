@@ -2,9 +2,11 @@ import React from 'react';
 import { PROXY_ENDPOINT } from '../constants';
 import {
     TrashIcon, EditIcon, XIcon, SendIcon, EyeIcon, LinkIcon,
-    CheckCircleIcon, RefreshCwIcon, LinkOffIcon, LockIcon, UnlockIcon
+    CheckCircleIcon, RefreshCwIcon, LinkOffIcon, LockIcon, UnlockIcon,
+    ChevronRightIcon, ChevronDownIcon // <-- Make sure these are imported
 } from './Icons';
 import { SparklineProgress } from './SparklineProgress';
+import { sortTasksByDependency } from '../utils/dependencySort';
 
 export const OnboardingView = ({ log, users, templates, onboardingTemplates, onboardingInstances, fetchOnboardingTemplates, fetchOnboardingInstances }) => {
     const [isTemplateModalOpen, setIsTemplateModalOpen] = React.useState(false);
@@ -27,6 +29,12 @@ export const OnboardingView = ({ log, users, templates, onboardingTemplates, onb
     const [manualIssueKey, setManualIssueKey] = React.useState('');
     const [manualStatus, setManualStatus] = React.useState('');
     const [newStatus, setNewStatus] = React.useState('');
+    
+    // --- START OF NEW CODE ---
+    // State to manage which nodes are expanded in the tree view
+    const [expandedNodes, setExpandedNodes] = React.useState(new Set());
+    // --- END OF NEW CODE ---
+
 
     const userMap = React.useMemo(() => {
         return users.reduce((acc, user) => {
@@ -43,6 +51,71 @@ export const OnboardingView = ({ log, users, templates, onboardingTemplates, onb
             }
         }
     }, [onboardingInstances, isInstanceDetailModalOpen, selectedInstance]);
+
+    // --- START OF MODIFIED CODE ---
+    // When opening the details modal, reset the expanded nodes to ensure the tree is collapsed
+    const openInstanceDetailModal = (instance) => {
+        setSelectedInstance(instance);
+        setExpandedNodes(new Set()); // Collapse all nodes when modal is opened
+        setIsInstanceDetailModalOpen(true);
+    };
+    // --- END OF MODIFIED CODE ---
+    
+    // --- START OF NEW CODE ---
+    // Toggles the expanded state of a given node
+    const handleToggleNode = (nodeId) => {
+        setExpandedNodes(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(nodeId)) {
+                newSet.delete(nodeId);
+            } else {
+                newSet.add(nodeId);
+            }
+            return newSet;
+        });
+    };
+    
+    // Memoize the sorted statuses and create a map of child-to-parent relationships
+    const { sortedStatuses, parentMap } = React.useMemo(() => {
+        if (!selectedInstance?.statuses) {
+            return { sortedStatuses: [], parentMap: new Map() };
+        }
+        const sorted = sortTasksByDependency(selectedInstance.statuses);
+        const map = new Map();
+        const stack = [];
+        sorted.forEach(task => {
+            while (stack.length > 0 && stack[stack.length - 1].level >= task.level) {
+                stack.pop();
+            }
+            if (stack.length > 0) {
+                map.set(task.id, stack[stack.length - 1].id);
+            }
+            stack.push(task);
+        });
+        return { sortedStatuses: sorted, parentMap: map };
+    }, [selectedInstance]);
+
+    // Filter the sorted list to only include nodes that should be visible
+    const visibleStatuses = React.useMemo(() => {
+        const visible = [];
+        for (const task of sortedStatuses) {
+            let isVisible = true;
+            let currentTaskId = task.id;
+            while (parentMap.has(currentTaskId)) {
+                const parentId = parentMap.get(currentTaskId);
+                if (!expandedNodes.has(parentId)) {
+                    isVisible = false;
+                    break;
+                }
+                currentTaskId = parentId;
+            }
+            if (isVisible) {
+                visible.push(task);
+            }
+        }
+        return visible;
+    }, [sortedStatuses, parentMap, expandedNodes]);
+    // --- END OF NEW CODE ---
 
     const handleSaveTemplate = async (e) => {
         e.preventDefault();
@@ -268,11 +341,6 @@ export const OnboardingView = ({ log, users, templates, onboardingTemplates, onb
         setIsTemplateModalOpen(true);
     };
 
-    const openInstanceDetailModal = (instance) => {
-        setSelectedInstance(instance);
-        setIsInstanceDetailModalOpen(true);
-    };
-
     const openAssociateModal = (instanceId, templateId, isManual = false) => {
         setAssociationInfo({ instanceId, templateId });
         if (isManual) {
@@ -459,7 +527,7 @@ export const OnboardingView = ({ log, users, templates, onboardingTemplates, onb
                                 <table className="w-full text-sm text-left">
                                     <thead className="text-xs text-slate-300 uppercase bg-slate-700 sticky top-0">
                                         <tr>
-                                            <th scope="col" className="p-3">Access Template</th>
+                                            <th scope="col" className="p-3">Task</th>
                                             <th scope="col" className="p-3">Status</th>
                                             <th scope="col" className="p-3">Issue Key</th>
                                             <th scope="col" className="p-3">Timestamps</th>
@@ -467,76 +535,92 @@ export const OnboardingView = ({ log, users, templates, onboardingTemplates, onb
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {selectedInstance?.statuses.map(s => (
-                                            <tr key={s.template_id} className={`bg-slate-800 border-b border-slate-700 ${s.isLocked ? 'opacity-60' : ''}`}>
-                                                <td className="p-3 align-top">
-                                                    <div className="flex items-start">
-                                                        {s.isLocked && <LockIcon c="w-4 h-4 mr-2 text-yellow-400 flex-shrink-0 mt-1"/>}
-                                                        <div>
-                                                            <span className="font-semibold text-white">{s.template_name}</span>
-                                                            {s.dependencies && s.dependencies.length > 0 && (
-                                                                <div className="text-xs text-slate-400 mt-1">
-                                                                    Depends on: {s.dependencies.map(depId => templates.find(t => t.template_id === depId)?.template_name).join(', ')}
-                                                                </div>
-                                                            )}
-                                                            {s.is_manual === 1 && s.instructions && (
-                                                                <div className="mt-2 p-2 bg-slate-700/50 rounded-md">
-                                                                    <p className="text-xs text-slate-300 whitespace-pre-wrap">{s.instructions}</p>
-                                                                </div>
+                                        {/* --- START OF MODIFIED CODE --- */}
+                                        {visibleStatuses.map(s => {
+                                            const hasChildren = sortedStatuses.some(child => child.dependencies?.includes(s.template_id));
+                                            const isExpanded = expandedNodes.has(s.id);
+
+                                            return (
+                                                <tr key={s.id} className={`bg-slate-800 border-b border-slate-700 ${s.isLocked ? 'opacity-60' : ''}`}>
+                                                    <td className="p-3 align-top" style={{ paddingLeft: `${s.level * 24 + 12}px` }}>
+                                                        <div className="flex items-start">
+                                                            <div className="flex items-center h-full">
+                                                                {hasChildren ? (
+                                                                    <button onClick={() => handleToggleNode(s.id)} className="mr-2 cursor-pointer">
+                                                                        {isExpanded ? <ChevronDownIcon c="w-4 h-4" /> : <ChevronRightIcon c="w-4 h-4" />}
+                                                                    </button>
+                                                                ) : (
+                                                                    <div className="w-6 mr-2"></div> // Placeholder for alignment
+                                                                )}
+                                                            </div>
+                                                            {s.isLocked && <LockIcon c="w-4 h-4 mr-2 text-yellow-400 flex-shrink-0 mt-1"/>}
+                                                            <div>
+                                                                <span className="font-semibold text-white">{s.template_name}</span>
+                                                                {s.dependencies && s.dependencies.length > 0 && (
+                                                                    <div className="text-xs text-slate-400 mt-1">
+                                                                        Depends on: {s.dependencies.map(depId => templates.find(t => t.template_id === depId)?.template_name).join(', ')}
+                                                                    </div>
+                                                                )}
+                                                                {s.is_manual === 1 && s.instructions && (
+                                                                    <div className="mt-2 p-2 bg-slate-700/50 rounded-md">
+                                                                        <p className="text-xs text-slate-300 whitespace-pre-wrap">{s.instructions}</p>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    </td>
+                                                    {/* --- END OF MODIFIED CODE --- */}
+                                                    <td className="p-3 align-top">{s.status}</td>
+                                                    <td className="p-3 align-top">{s.issue_key || 'N/A'}</td>
+                                                    <td className="p-3 align-top text-xs text-slate-400">
+                                                        {s.started_at && <div>Started: {new Date(s.started_at).toLocaleString()}</div>}
+                                                        {s.closed_at && <div>Closed: {new Date(s.closed_at).toLocaleString()}</div>}
+                                                    </td>
+                                                    <td className="p-3 align-top">
+                                                        <div className="flex space-x-2">
+                                                            {s.isLocked ? (
+                                                                <button onClick={() => handleBypass(selectedInstance.id, s.template_id)} className="text-yellow-400 hover:text-yellow-300" title="Bypass Dependency">
+                                                                    <UnlockIcon c="w-4 h-4" />
+                                                                </button>
+                                                            ) : (
+                                                                (() => {
+                                                                    if (s.is_manual === 1) {
+                                                                        if (s.issue_key) {
+                                                                            return (
+                                                                                <>
+                                                                                    <button onClick={() => openUpdateStatusModal(selectedInstance.id, s.template_id, s.status)} className="text-cyan-400 hover:text-cyan-300" title="Update Status">
+                                                                                        <RefreshCwIcon c="w-4 h-4" />
+                                                                                    </button>
+                                                                                    <button onClick={() => handleUnassignTicket(selectedInstance.id, s.template_id, s.issue_key)} className="text-red-400 hover:text-red-300" title="Unassign Ticket">
+                                                                                        <LinkOffIcon c="w-4 h-4" />
+                                                                                    </button>
+                                                                                </>
+                                                                            );
+                                                                        }
+                                                                        if (s.status === 'Not Started') {
+                                                                            return (
+                                                                                <>
+                                                                                    <button onClick={() => handleMarkAsComplete(selectedInstance.id, s.template_id)} className="text-green-400 hover:text-green-300" title="Mark as Complete"><CheckCircleIcon c="w-4 h-4" /></button>
+                                                                                    <button onClick={() => openAssociateModal(selectedInstance.id, s.template_id, true)} className="text-gray-400 hover:text-gray-300" title="Associate Ticket"><LinkIcon c="w-4 h-4" /></button>
+                                                                                </>
+                                                                            );
+                                                                        }
+                                                                    } else if (s.status === 'Not Started') {
+                                                                        return (
+                                                                            <>
+                                                                                <button onClick={() => handleExecuteRequest(selectedInstance.id, s.template_id)} className="text-blue-400 hover:text-blue-300" title="Submit Request"><SendIcon c="w-4 h-4" /></button>
+                                                                                <button onClick={() => openAssociateModal(selectedInstance.id, s.template_id)} className="text-gray-400 hover:text-gray-300" title="Associate Ticket"><LinkIcon c="w-4 h-4" /></button>
+                                                                            </>
+                                                                        );
+                                                                    }
+                                                                    return null;
+                                                                })()
                                                             )}
                                                         </div>
-                                                    </div>
-                                                </td>
-                                                <td className="p-3 align-top">{s.status}</td>
-                                                <td className="p-3 align-top">{s.issue_key || 'N/A'}</td>
-                                                <td className="p-3 align-top text-xs text-slate-400">
-                                                    {s.started_at && <div>Started: {new Date(s.started_at).toLocaleString()}</div>}
-                                                    {s.closed_at && <div>Closed: {new Date(s.closed_at).toLocaleString()}</div>}
-                                                </td>
-                                                <td className="p-3 align-top">
-                                                    <div className="flex space-x-2">
-                                                        {s.isLocked ? (
-                                                            <button onClick={() => handleBypass(selectedInstance.id, s.template_id)} className="text-yellow-400 hover:text-yellow-300" title="Bypass Dependency">
-                                                                <UnlockIcon c="w-4 h-4" />
-                                                            </button>
-                                                        ) : (
-                                                            (() => {
-                                                                if (s.is_manual === 1) {
-                                                                    if (s.issue_key) {
-                                                                        return (
-                                                                            <>
-                                                                                <button onClick={() => openUpdateStatusModal(selectedInstance.id, s.template_id, s.status)} className="text-cyan-400 hover:text-cyan-300" title="Update Status">
-                                                                                    <RefreshCwIcon c="w-4 h-4" />
-                                                                                </button>
-                                                                                <button onClick={() => handleUnassignTicket(selectedInstance.id, s.template_id, s.issue_key)} className="text-red-400 hover:text-red-300" title="Unassign Ticket">
-                                                                                    <LinkOffIcon c="w-4 h-4" />
-                                                                                </button>
-                                                                            </>
-                                                                        );
-                                                                    }
-                                                                    if (s.status === 'Not Started') {
-                                                                        return (
-                                                                            <>
-                                                                                <button onClick={() => handleMarkAsComplete(selectedInstance.id, s.template_id)} className="text-green-400 hover:text-green-300" title="Mark as Complete"><CheckCircleIcon c="w-4 h-4" /></button>
-                                                                                <button onClick={() => openAssociateModal(selectedInstance.id, s.template_id, true)} className="text-gray-400 hover:text-gray-300" title="Associate Ticket"><LinkIcon c="w-4 h-4" /></button>
-                                                                            </>
-                                                                        );
-                                                                    }
-                                                                } else if (s.status === 'Not Started') {
-                                                                    return (
-                                                                        <>
-                                                                            <button onClick={() => handleExecuteRequest(selectedInstance.id, s.template_id)} className="text-blue-400 hover:text-blue-300" title="Submit Request"><SendIcon c="w-4 h-4" /></button>
-                                                                            <button onClick={() => openAssociateModal(selectedInstance.id, s.template_id)} className="text-gray-400 hover:text-gray-300" title="Associate Ticket"><LinkIcon c="w-4 h-4" /></button>
-                                                                        </>
-                                                                    );
-                                                                }
-                                                                return null;
-                                                            })()
-                                                        )}
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                        ))}
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
                                     </tbody>
                                 </table>
                             </div>
